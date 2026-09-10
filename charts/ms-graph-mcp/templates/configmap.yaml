@@ -1,0 +1,22 @@
+{{- $name := include "msgraph.fullname" . -}}
+{{- $port := int .Values.service.port -}}
+{{- $hosts := list (printf "%s:%d" $name $port) (printf "%s.%s:%d" $name .Release.Namespace $port) (printf "%s.%s.svc:%d" $name .Release.Namespace $port) (printf "%s.%s.svc.cluster.local:%d" $name .Release.Namespace $port) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "msgraph.labels" . | nindent 4 }}
+data:
+  GRAPH_MCP_TENANT_ID: {{ required "Set config.tenantId" .Values.config.tenantId | quote }}
+  GRAPH_MCP_CLIENT_ID: {{ required "Set config.clientId" .Values.config.clientId | quote }}
+  GRAPH_MCP_ALLOWED_CLIENT_IDS: {{ required "Set config.allowedClientIds" .Values.config.allowedClientIds | toJson | quote }}
+  GRAPH_MCP_RESOURCE_URL: {{ required "Set config.resourceUrl" .Values.config.resourceUrl | quote }}
+  GRAPH_MCP_SCOPE_NAME: {{ .Values.config.scopeName | quote }}
+  GRAPH_MCP_ALLOWED_HOSTS: {{ concat $hosts .Values.config.extraAllowedHosts | uniq | toJson | quote }}
+  GRAPH_MCP_ALLOWED_ORIGINS: {{ .Values.config.allowedOrigins | toJson | quote }}
+  GRAPH_MCP_HTTP_TIMEOUT_SECONDS: {{ .Values.config.httpTimeoutSeconds | quote }}
+  GRAPH_MCP_OBO_CACHE_ENTRIES: {{ .Values.config.oboCacheEntries | quote }}
+  {{- if .Values.enterpriseCA.enabled }}
+  GRAPH_MCP_EXTRA_CA_FILE: /etc/ms-graph-mcp/ca/enterprise-ca.pem
+  {{- end }}

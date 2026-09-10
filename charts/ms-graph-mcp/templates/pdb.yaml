@@ -1,0 +1,16 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- if ge (int .Values.podDisruptionBudget.maxUnavailable) (int .Values.replicaCount) }}
+{{- fail "podDisruptionBudget.maxUnavailable must be less than replicaCount" }}
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "msgraph.fullname" . }}
+  labels:
+    {{- include "msgraph.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "msgraph.selector" . | nindent 6 }}
+{{- end }}

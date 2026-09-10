@@ -1,0 +1,32 @@
+{{- if .Values.metadataIngress.enabled }}
+{{- $url := urlParse .Values.config.resourceUrl }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "msgraph.fullname" . }}-metadata
+  labels:
+    {{- include "msgraph.labels" . | nindent 4 }}
+  {{- with .Values.metadataIngress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.metadataIngress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.metadataIngress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ (splitList ":" $url.host | first) | quote }}
+      http:
+        paths:
+          - path: {{ printf "/.well-known/oauth-protected-resource%s" $url.path | quote }}
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "msgraph.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}

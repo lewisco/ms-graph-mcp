@@ -1,0 +1,74 @@
+replicaCount: 2
+image:
+  repository: ghcr.io/lewisco/ms-graph-mcp
+  # Supply an existing tag or, preferably, sha256 digest. No image is published by this chart.
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+config:
+  tenantId: ""
+  clientId: ""
+  allowedClientIds: []
+  resourceUrl: ""
+  scopeName: access_as_user
+  # Service DNS names are added automatically. Add any alternate Host headers used by your proxy.
+  extraAllowedHosts: []
+  allowedOrigins: []
+  httpTimeoutSeconds: 15
+  oboCacheEntries: 128
+
+credentials:
+  existingSecret: ""
+  clientSecretKey: client-secret
+
+enterpriseCA:
+  enabled: false
+  # Exactly one existing ConfigMap or Secret, in the release namespace, containing PEM CA roots.
+  configMapName: ""
+  secretName: ""
+  key: enterprise-ca.pem
+
+service:
+  port: 8000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topology:
+  # Hard spread over at least two eligible nodes. Requires Kubernetes 1.30+.
+  nodeSpread: true
+  minDomains: 2
+  zoneSpread: true
+  # Change to DoNotSchedule with zoneMinDomains: 2 to require multiple labeled zones.
+  zoneWhenUnsatisfiable: ScheduleAnyway
+  zoneMinDomains: 2
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+# Only the OAuth metadata document may need a direct ingress route on LiteLLM's hostname.
+# MCP tool traffic uses the private Service through LiteLLM.
+metadataIngress:
+  enabled: false
+  className: ""
+  annotations: {}
+  tls: []
+
+# Enable with selectors for the actual LiteLLM pods and, if used, ingress-controller pods.
+networkPolicy:
+  enabled: false
+  ingressFrom: []
+  # Cluster DNS and outbound HTTPS must be allowed by your cluster's egress policy.
+  # This optional policy restricts ingress only; it does not add an egress allow-all rule.

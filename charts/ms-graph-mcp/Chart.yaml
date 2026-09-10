@@ -1,0 +1,7 @@
+apiVersion: v2
+name: ms-graph-mcp
+description: Delegated Microsoft Graph MCP with configurable availability and enterprise trust
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.30.0-0"

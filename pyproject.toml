@@ -1,0 +1,41 @@
+[project]
+name = "ms-graph-mcp"
+version = "0.1.0"
+description = "Delegated Microsoft Graph access over Streamable HTTP MCP"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "httpx==0.28.1",
+  "mcp==2.2.0",
+  "msal==1.38.0",
+  "pydantic-settings==2.15.0",
+  "PyJWT[crypto]==2.13.0",
+  "requests==2.34.2",
+  "starlette==1.6.0",
+  "uvicorn==0.52.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pyyaml==6.0.3",
+    "ruff==0.16.6",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ms_graph_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]

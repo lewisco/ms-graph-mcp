@@ -1,0 +1,152 @@
+{{- if and .Values.enterpriseCA.enabled (not (or .Values.enterpriseCA.configMapName .Values.enterpriseCA.secretName)) -}}
+{{- fail "enterpriseCA requires configMapName or secretName" -}}
+{{- end -}}
+{{- if and .Values.enterpriseCA.enabled .Values.enterpriseCA.configMapName .Values.enterpriseCA.secretName -}}
+{{- fail "enterpriseCA accepts only one of configMapName or secretName" -}}
+{{- end -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "msgraph.fullname" . }}
+  labels:
+    {{- include "msgraph.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 3
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "msgraph.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "msgraph.selector" . | nindent 8 }}
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or .Values.topology.nodeSpread .Values.topology.zoneSpread }}
+      topologySpreadConstraints:
+        {{- if .Values.topology.nodeSpread }}
+        - maxSkew: 1
+          minDomains: {{ .Values.topology.minDomains }}
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              {{- include "msgraph.selector" . | nindent 14 }}
+        {{- end }}
+        {{- if .Values.topology.zoneSpread }}
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: {{ .Values.topology.zoneWhenUnsatisfiable }}
+          {{- if eq .Values.topology.zoneWhenUnsatisfiable "DoNotSchedule" }}
+          minDomains: {{ .Values.topology.zoneMinDomains }}
+          {{- end }}
+          labelSelector:
+            matchLabels:
+              {{- include "msgraph.selector" . | nindent 14 }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: mcp
+          image: {{ include "msgraph.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["uvicorn"]
+          args:
+            - ms_graph_mcp.app:create_app
+            - --factory
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8000"
+            - --no-access-log
+            - --no-proxy-headers
+            - --timeout-graceful-shutdown
+            - "25"
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: {{ include "msgraph.fullname" . }}
+          env:
+            - name: GRAPH_MCP_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "Set credentials.existingSecret" .Values.credentials.existingSecret }}
+                  key: {{ .Values.credentials.clientSecretKey }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 2
+          lifecycle:
+            preStop:
+              exec:
+                command: ["python", "-c", "import time; time.sleep(10)"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.enterpriseCA.enabled }}
+          volumeMounts:
+            - name: enterprise-ca
+              mountPath: /etc/ms-graph-mcp/ca
+              readOnly: true
+          {{- end }}
+      {{- if .Values.enterpriseCA.enabled }}
+      volumes:
+        - name: enterprise-ca
+          {{- if .Values.enterpriseCA.configMapName }}
+          configMap:
+            name: {{ .Values.enterpriseCA.configMapName }}
+          {{- else }}
+          secret:
+            secretName: {{ .Values.enterpriseCA.secretName }}
+          {{- end }}
+            items:
+              - key: {{ .Values.enterpriseCA.key }}
+                path: enterprise-ca.pem
+      {{- end }}

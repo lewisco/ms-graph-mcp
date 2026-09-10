@@ -1,0 +1,8 @@
+Service endpoint for LiteLLM:
+  http://{{ include "msgraph.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/mcp
+
+Configured replicas: {{ .Values.replicaCount }}
+Public OAuth resource: {{ .Values.config.resourceUrl }}
+
+Complete the live authentication and failover checks in docs/kubernetes.md.
+External Secret/CA updates require a rolling restart to reload process configuration.
