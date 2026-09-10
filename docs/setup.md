@@ -71,6 +71,8 @@ The process loads required settings at startup. Health/readiness and metadata ig
 ## 4. Container and cluster wiring
 
 ```sh
+docker login dhi.io
+# Development build only; use scripts/release_image.py for the release scan gate.
 docker build -t ms-graph-mcp:0.1.0 .
 docker run --rm --env-file .env -p 127.0.0.1:8000:8000 ms-graph-mcp:0.1.0
 ```

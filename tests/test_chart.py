@@ -41,6 +41,11 @@ def test_ha_and_secret_contract(replicas, monkeypatch):
     assert deployment["strategy"]["rollingUpdate"] == {"maxSurge": 1, "maxUnavailable": 0}
     assert resources["PodDisruptionBudget"]["spec"]["maxUnavailable"] == 1
     pod = deployment["template"]["spec"]
+    assert pod["securityContext"]["runAsUser"] == 65532
+    assert pod["securityContext"]["runAsGroup"] == 65532
+    container = pod["containers"][0]
+    assert container["command"] == ["/app/.venv/bin/python", "-m", "uvicorn"]
+    assert container["lifecycle"]["preStop"]["exec"]["command"][0] == "/app/.venv/bin/python"
     spread = pod["topologySpreadConstraints"][0]
     assert spread["minDomains"] == 2 and spread["whenUnsatisfiable"] == "DoNotSchedule"
     assert not pod["automountServiceAccountToken"]
@@ -136,7 +141,7 @@ def test_tls_is_default_with_secret_and_https_probes():
     pod = resources["Deployment"]["spec"]["template"]["spec"]
     container = pod["containers"][0]
     assert "--ssl-certfile" in container["args"] and "--ssl-keyfile" in container["args"]
-    assert pod["securityContext"]["fsGroup"] == 10001
+    assert pod["securityContext"]["fsGroup"] == 65532
     tls = next(volume for volume in pod["volumes"] if volume["name"] == "server-tls")
     assert tls["secret"]["secretName"] == "ms-graph-mcp-tls"
     assert tls["secret"]["defaultMode"] == 0o440

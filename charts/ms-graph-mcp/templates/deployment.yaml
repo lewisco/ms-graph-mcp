@@ -40,10 +40,10 @@ spec:
       terminationGracePeriodSeconds: 45
       securityContext:
         runAsNonRoot: true
-        runAsUser: 10001
-        runAsGroup: 10001
+        runAsUser: 65532
+        runAsGroup: 65532
         {{- if $tls }}
-        fsGroup: 10001
+        fsGroup: 65532
         {{- end }}
         seccompProfile:
           type: RuntimeDefault
@@ -90,7 +90,7 @@ spec:
         - name: mcp
           image: {{ include "msgraph.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["uvicorn"]
+          command: ["/app/.venv/bin/python", "-m", "uvicorn"]
           args:
             - ms_graph_mcp.app:create_app
             - --factory
@@ -140,7 +140,7 @@ spec:
           lifecycle:
             preStop:
               exec:
-                command: ["python", "-c", "import time; time.sleep(10)"]
+                command: ["/app/.venv/bin/python", "-c", "import time; time.sleep(10)"]
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- if or .Values.enterpriseCA.enabled $tls }}

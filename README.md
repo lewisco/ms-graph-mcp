@@ -57,3 +57,9 @@ The design uses Open WebUI 0.11.3, LiteLLM 1.100.0, and Open Terminal 0.11.34 as
 The proposed default is a separate Microsoft connection in Open WebUI, LiteLLM `oauth_delegate` routing, and an Entra OBO exchange in the Graph MCP. This avoids coupling Graph access to Open WebUI's existing SSO registration.
 
 Document creation and rendering run in the terminal. The Graph MCP remains a small gateway with explicit controls over returned content and temporary file transfer.
+
+## Hardened runtime and release gate
+
+The Dockerfile uses DHI Python 3.12 on Debian 13, with separate development and runtime stages. The [manual release gate](scripts/release_image.py) builds one platform, scans the final image with a freshly downloaded Trivy database, and permits publication only with zero reported vulnerabilities at every severity, including unfixed findings. It checks OS/Python scan coverage and records scan, database and image evidence. See [build and release instructions](docs/kubernetes.md). No CI service is required.
+
+The DHI image build is not yet verified here: registry metadata requests timed out. No zero-CVE result or DHI image publication is claimed.

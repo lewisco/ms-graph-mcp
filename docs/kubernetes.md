@@ -8,35 +8,51 @@ Only the authentication/profile scaffold is currently implemented. Its stateless
 
 The Git remote is `https://github.com/lewisco/ms-graph-mcp.git`. Container images belong in a registry such as Harbor or GitHub Container Registry (GHCR), not in the Git repository. The commands below are manual examples; no image has been published by adding them.
 
-Build a native image on an amd64 workstation at work, then push to Harbor:
+The default build uses `dhi.io/python:3.12-debian13-dev` and the matching `dhi.io/python:3.12-debian13` runtime. Both support amd64/arm64. The runtime runs as UID/GID 65532; container and Helm commands use `/app/.venv/bin/python` directly. It does not depend on a shell or a `python` alias. [DHI Python definitions](https://github.com/docker-hardened-images/catalog/tree/main/image/python/debian-13)
+
+**Release criterion: zero reported vulnerabilities at every severity in the final runtime image, including OS and Python dependencies.** A clean base image alone does not pass this criterion. Use the [manual release gate](../scripts/release_image.py); Docker build alone is a development build and does not perform the scan.
+
+Install Docker with Buildx, Python 3.11+ on the build host, and a current Trivy CLI supporting the flags in the script. Log into DHI and your destination registry through Docker's credential store. No CI service is required.
 
 ```sh
+docker login dhi.io
 docker login harbor.example.com
-docker buildx build --platform linux/amd64 --load \
-  -t harbor.example.com/ai/ms-graph-mcp:0.1.0-local .
-docker push harbor.example.com/ai/ms-graph-mcp:0.1.0-local
+python3 scripts/release_image.py \
+  --platform linux/amd64 \
+  --image harbor.example.com/ai/ms-graph-mcp:0.1.0-dhi-amd64 \
+  --push
 ```
 
-The explicit platform also makes an amd64 cluster image from an Apple Silicon Mac. For a local Mac smoke test, use `--platform linux/arm64 --load`. For one image reference supporting both architectures, publish a manifest list:
+For a Mac build pushed to GitHub Container Registry:
 
 ```sh
+docker login dhi.io
 docker login ghcr.io --username lewisco
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/lewisco/ms-graph-mcp:0.1.0-local --push .
+python3 scripts/release_image.py \
+  --platform linux/arm64 \
+  --image ghcr.io/lewisco/ms-graph-mcp:0.1.0-dhi-arm64 \
+  --push
 ```
 
-Use a builder with the requested platform support; Docker Desktop normally provides emulation. Cross-platform builds can be slower. The target architecture's Python environment is built inside the target image; the Mac `.venv` is excluded. Use a unique release tag and record the resulting digest for deployment. [Docker multi-platform builds](https://docs.docker.com/build/building/multi-platform/)
+Select `linux/amd64` even on Apple Silicon when that is the cluster architecture. Omit `--push` to build, scan and tag locally. Each invocation covers one platform: run the gate separately for amd64 and arm64. The script does not publish a multi-platform manifest; do not use a raw multi-platform `--push` command as a substitute for scanning every architecture. [Docker platform support](https://docs.docker.com/build/building/multi-platform/)
 
-For registries mirrored inside work, override the base images:
+The gate builds locally with refreshed base-image metadata, checks runtime imports under non-root/read-only restrictions, exports the immutable image ID to an archive, downloads a vulnerability database into a new cache and scans that exact archive. It explicitly includes UNKNOWN/LOW/MEDIUM/HIGH/CRITICAL and unfixed vulnerabilities, and checks that OS and Python application packages were inventoried. Local Trivy config, ignore files and `TRIVY_*` environment overrides cannot weaken the gate. Download/scan errors, stale DB metadata, incomplete coverage, suppressed findings or any vulnerability block tagging/publishing the release image. [Trivy image scan options](https://trivy.dev/docs/latest/references/configuration/cli/trivy_image/)
+
+Each run writes evidence into a unique directory under `dist/`: `scan.json`, database metadata and scanner version in `release.json`, Buildx metadata, archive SHA-256, image ID and, after publication, registry digests. Failed runs retain evidence with `status: blocked`. The archive can be large; retain it according to your release-evidence policy. The local image ID is a configuration digest; use the recorded registry manifest digest for Helm's `image.digest` after a successful push. Database downloads require network access and up-to-date upstream metadata; the gate fails closed when these are unavailable. Configure enterprise trust on the host for Trivy as well as on Docker when needed.
+
+For base images mirrored inside work, provide matching approved DHI references, preferably pinned to digests:
 
 ```sh
-docker buildx build --platform linux/amd64 --load \
-  --build-arg PYTHON_IMAGE=harbor.example.com/base/python:3.12-slim-bookworm \
+python3 scripts/release_image.py \
+  --platform linux/amd64 \
+  --build-arg PYTHON_BUILD_IMAGE=harbor.example.com/base/python:3.12-debian13-dev \
+  --build-arg PYTHON_RUNTIME_IMAGE=harbor.example.com/base/python:3.12-debian13 \
   --build-arg UV_IMAGE=harbor.example.com/base/uv:0.12.12 \
-  -t harbor.example.com/ai/ms-graph-mcp:0.1.0-local .
+  --image harbor.example.com/ai/ms-graph-mcp:0.1.0-dhi-amd64 \
+  --push
 ```
 
-The Python mirror must match the expected Python 3.12 Debian image layout and include its standard CA bundle; the uv mirror must provide `/uv`. Pin those arguments to approved digests for reproducible base images. Python packages remain locked in `uv.lock`; network access to the locked package sources is required.
+The previous single `PYTHON_IMAGE` argument has been replaced by separate build/runtime arguments. The Python mirrors must retain compatible Python paths and ABI and include the standard CA bundle; the uv mirror must provide `/uv`. Python packages remain locked in `uv.lock`; network access to the locked package sources is required. The gate does not suppress findings or automatically change dependency versions: repair a finding, rebuild and rescan.
 
 ## 2. TLS trust by connection
 
@@ -52,9 +68,11 @@ Runtime CA mounts cannot fix image pulls: the node downloads the image before th
 For dependency downloads behind enterprise TLS, pass a PEM CA bundle as a build secret:
 
 ```sh
-docker buildx build --platform linux/amd64 --load \
-  --secret id=enterprise_ca,src=/path/to/enterprise-ca.pem \
-  -t harbor.example.com/ai/ms-graph-mcp:0.1.0-local .
+python3 scripts/release_image.py \
+  --platform linux/amd64 \
+  --enterprise-ca /path/to/enterprise-ca.pem \
+  --image harbor.example.com/ai/ms-graph-mcp:0.1.0-dhi-amd64 \
+  --push
 ```
 
 The Dockerfile combines the supplied CA roots with the build image's public roots for `uv`, then removes the temporary bundle. The CA secret is not copied into the final runtime image. This addresses TLS trust; explicit outbound proxy support is separate. [Docker build secrets](https://docs.docker.com/build/building/secrets/), [uv certificate configuration](https://docs.astral.sh/uv/concepts/authentication/certificates/)

@@ -43,6 +43,14 @@ Sources are linked beside the relevant claims in [architecture](architecture.md)
 
 ## 2. First implementation gates
 
+### DHI runtime and release gate — 2026-09-10
+
+The Dockerfile now pairs DHI Python 3.12 Debian 13 development/runtime images. Helm chart 0.1.1 uses UID/GID/fsGroup 65532 and absolute virtual-environment Python commands. The manual release command scans an immutable archive of the final runtime with freshly downloaded Trivy DB metadata, all severities and both OS/library package coverage. It blocks release on any reported or suppressed vulnerability, missing coverage, a stale DB, runtime smoke failure or scanner errors.
+
+Validation: the full suite passed **141 tests** before the final chart group-alignment change and additional smoke-failure test; the final focused release/chart suite passed **43 tests**. Ruff and Helm lint passed, and chart 0.1.1 was packaged. Release tests use controlled subprocess responses to verify that publishing cannot occur after a failed gate.
+
+The attempted local arm64 DHI build timed out fetching registry metadata, before build steps ran. Trivy is not installed on this build host. A real final-image scan, zero-CVE result, runtime smoke in DHI and DHI image publication are therefore **pending**. These checks must succeed on the release machine; local unit tests do not substitute for them. See [release instructions](kubernetes.md).
+
 Complete these narrow slices before expanding to the complete service catalog. They are implementation sequencing, not permission to drop any agreed service.
 
 ### G1 — Delegated authentication through the real client chain
