@@ -16,6 +16,8 @@ from ms_graph_mcp.config import Settings
         {"allowed_origins": ["https://*.example"]},
         {"client_secret": ""},
         {"scope_name": "a b"},
+        {"obo_max_concurrent_exchanges": 0},
+        {"obo_max_concurrent_exchanges": 33},
     ],
 )
 def test_invalid_identity_or_ingress_settings(settings, changes):

@@ -17,6 +17,7 @@ data:
   GRAPH_MCP_ALLOWED_ORIGINS: {{ .Values.config.allowedOrigins | toJson | quote }}
   GRAPH_MCP_HTTP_TIMEOUT_SECONDS: {{ .Values.config.httpTimeoutSeconds | quote }}
   GRAPH_MCP_OBO_CACHE_ENTRIES: {{ .Values.config.oboCacheEntries | quote }}
+  GRAPH_MCP_OBO_MAX_CONCURRENT_EXCHANGES: {{ .Values.config.oboMaxConcurrentExchanges | quote }}
   {{- if .Values.enterpriseCA.enabled }}
   GRAPH_MCP_EXTRA_CA_FILE: /etc/ms-graph-mcp/ca/enterprise-ca.pem
   {{- end }}

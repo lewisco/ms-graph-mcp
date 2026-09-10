@@ -9,11 +9,13 @@ import httpx
 import jwt
 import pytest
 import requests
+import uvicorn
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
+from ms_graph_mcp.app import create_app
 from ms_graph_mcp.auth import EntraVerifier
 from ms_graph_mcp.obo import OboClient, _EntraSession
 from ms_graph_mcp.tls import create_ssl_context
@@ -163,3 +165,58 @@ def test_invalid_pem_fails_before_serving(settings, tmp_path):
     settings.extra_ca_file = path
     with pytest.raises(ssl.SSLError):
         OboClient(settings)
+
+
+@pytest.fixture
+def https_app(settings, enterprise_server):
+    ca_path, _ = enterprise_server
+    started = threading.Event()
+
+    class Server(uvicorn.Server):
+        async def startup(self, sockets=None):
+            await super().startup(sockets=sockets)
+            started.set()
+
+    config = uvicorn.Config(
+        create_app(settings),
+        host="127.0.0.1",
+        port=0,
+        ssl_certfile=str(ca_path.parent / "server.pem"),
+        ssl_keyfile=str(ca_path.parent / "key.pem"),
+        access_log=False,
+        proxy_headers=False,
+        log_level="error",
+    )
+    listener = config.bind_socket()
+    port = listener.getsockname()[1]
+    server = Server(config)
+    worker = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
+    worker.start()
+    try:
+        assert started.wait(3)
+        yield ca_path, f"https://localhost:{port}"
+    finally:
+        server.should_exit = True
+        worker.join(timeout=3)
+        listener.close()
+        assert not worker.is_alive()
+
+
+async def test_real_mcp_https_listener_and_server_certificate_verification(https_app):
+    ca_path, url = https_app
+    context = ssl.create_default_context(cafile=str(ca_path))
+    async with httpx.AsyncClient(verify=context, trust_env=False, timeout=2) as client:
+        assert (await client.get(url + "/healthz")).status_code == 200
+        response = await client.post(
+            url + "/mcp",
+            json={},
+            headers={"Host": "testserver", "Accept": "application/json, text/event-stream"},
+        )
+        assert response.status_code == 401
+        with pytest.raises(httpx.HTTPError):
+            await client.get(url.replace("https://", "http://") + "/healthz")
+        with pytest.raises(httpx.ConnectError):
+            await client.get(url.replace("localhost", "127.0.0.1") + "/healthz")
+    async with httpx.AsyncClient(trust_env=False, timeout=2) as untrusted:
+        with pytest.raises(httpx.ConnectError):
+            await untrusted.get(url + "/healthz")

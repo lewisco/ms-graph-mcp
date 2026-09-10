@@ -1,8 +1,13 @@
 Service endpoint for LiteLLM:
-  http://{{ include "msgraph.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/mcp
+  {{ ternary "https" "http" (eq .Values.transportSecurity.mode "tls") }}://{{ include "msgraph.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/mcp
 
 Configured replicas: {{ .Values.replicaCount }}
 Public OAuth resource: {{ .Values.config.resourceUrl }}
 
 Complete the live authentication and failover checks in docs/kubernetes.md.
 External Secret/CA updates require a rolling restart to reload process configuration.
+{{ if eq .Values.transportSecurity.mode "tls" }}
+Configure LiteLLM to trust the Service certificate issuer. Verify its Service DNS SAN.
+{{ else }}
+Mesh mode requires enforced mTLS between LiteLLM and MCP; verify the mesh policy in-cluster.
+{{ end }}

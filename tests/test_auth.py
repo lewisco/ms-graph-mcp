@@ -93,10 +93,10 @@ async def test_wrong_signature(settings, jwks, obo, token, signing_key):
 
 
 async def test_jwks_outage_is_retryable(settings, jwks, obo, token):
-    def fail(value):
+    def fail(**kwargs):
         raise jwt.PyJWKClientConnectionError("internal network detail")
 
-    jwks.get_signing_key_from_jwt = fail
+    jwks.get_signing_keys = fail
     with pytest.raises(AuthFailure) as failure:
         await EntraVerifier(settings, obo, jwks=jwks).verify_token(token())
     assert failure.value.status == 503

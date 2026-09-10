@@ -21,6 +21,7 @@ from ms_graph_mcp.config import Settings
 from ms_graph_mcp.errors import AuthFailureMiddleware
 from ms_graph_mcp.graph import DEFAULT_FIELDS, GraphClient, GraphFailure, ProfileField
 from ms_graph_mcp.obo import OboClient
+from ms_graph_mcp.request_security import RequestSecurityMiddleware
 from ms_graph_mcp.tls import create_ssl_context
 
 
@@ -49,7 +50,8 @@ def create_app(
             yield None
         finally:
             await http.aclose()
-            obo.clear()
+            await verifier.aclose()
+            await obo.aclose()
 
     mcp = MCPServer(
         "ms-graph-mcp",
@@ -146,16 +148,27 @@ def create_app(
             }
         )
 
+    transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=settings.allowed_hosts,
+        allowed_origins=settings.allowed_origins,
+    )
     app = mcp.streamable_http_app(
         streamable_http_path="/mcp",
         json_response=True,
         stateless_http=True,
         max_request_body_size=65536,
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=True,
-            allowed_hosts=settings.allowed_hosts,
-            allowed_origins=settings.allowed_origins,
-        ),
+        transport_security=transport_security,
     )
     app.add_middleware(AuthFailureMiddleware, metadata_url=settings.metadata_url)
+    app.add_middleware(
+        RequestSecurityMiddleware,
+        public_paths={
+            "/healthz",
+            "/readyz",
+            "/.well-known/oauth-protected-resource",
+            settings.metadata_path,
+        },
+        security=transport_security,
+    )
     return app

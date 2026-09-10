@@ -9,6 +9,7 @@ spec:
   sessionAffinity: None
   ports:
     - name: http
+      appProtocol: {{ ternary "https" "http" (eq .Values.transportSecurity.mode "tls") }}
       port: {{ .Values.service.port }}
       targetPort: http
   selector:

@@ -230,12 +230,43 @@ def test_malformed_or_oversized_profile(server, token, body):
 
 
 def test_untrusted_host_and_origin_rejected(server, token):
-    client, requests, *_ = server
+    client, requests, _, exchange, *_ = server
     response = rpc(client, token(), "tools/list", Host="evil.example")
     assert response.status_code == 421
     response = rpc(client, token(), "tools/list", Origin="https://evil.example")
     assert response.status_code == 403
+    exchange.assert_not_called()
     assert not requests
+
+
+@pytest.mark.parametrize("credential", ["valid", "malformed", "wrong-scope"])
+def test_public_routes_ignore_bearer_without_contacting_microsoft(
+    server, settings, token, jwks, credential
+):
+    client, requests, _, exchange, *_ = server
+    jwks.get_signing_keys = Mock(side_effect=AssertionError("Public route fetched signing keys"))
+    incoming = {"valid": token(), "malformed": "malformed", "wrong-scope": token(scp="other")}[
+        credential
+    ]
+    for route in (
+        "/healthz",
+        "/readyz",
+        "/.well-known/oauth-protected-resource",
+        settings.metadata_path,
+    ):
+        response = client.get(route, headers={"Authorization": f"Bearer {incoming}"})
+        assert response.status_code == 200
+    jwks.get_signing_keys.assert_not_called()
+    exchange.assert_not_called()
+    assert not requests
+
+
+def test_ingress_checks_run_before_signing_key_lookup(server, token, jwks):
+    client, *_ = server
+    jwks.get_signing_keys = Mock(side_effect=AssertionError("Rejected request fetched keys"))
+    assert rpc(client, token(), "tools/list", Host="evil.example").status_code == 421
+    assert rpc(client, token(), "tools/list", Origin="https://evil.example").status_code == 403
+    jwks.get_signing_keys.assert_not_called()
 
 
 def test_throttle_delay_reaches_model(server, token):

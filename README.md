@@ -8,6 +8,14 @@ Implemented: tenant-specific Entra JWT validation, delegated OBO through MSAL, b
 
 File transfers, other Microsoft 365 operations, full read/write coverage, artifact cleanup, and terminal document rendering remain planned. The agreed 250 MB and visual document workflows are not implemented yet.
 
+## Documentation
+
+- [User guide](docs/usage.md): connect Microsoft, use the available tools, and understand errors.
+- [Setup guide](docs/setup.md): configure Entra registrations, the server, LiteLLM, and Open WebUI.
+- [Configuration reference](docs/configuration.md): environment variables, Helm settings, and security limits.
+- [Kubernetes deployment](docs/kubernetes.md): build images, configure certificates and gateway access, and install or upgrade.
+- [Security controls](docs/security.md): authentication protections and deployment verification.
+
 ## Run the first slice
 
 Follow the [Entra, server, LiteLLM, and WebUI setup guide](docs/setup.md). Start with delegated `User.Read` and prove the connection before adding more permissions.
@@ -32,6 +40,8 @@ Dependencies are locked in `uv.lock` for Python 3.12. A non-root [Dockerfile](Do
 ## Deploy on Kubernetes
 
 Use the [Helm chart](charts/ms-graph-mcp/values.yaml) and [Kubernetes/manual build guide](docs/kubernetes.md). Replicas default to **two** and are configurable at installation. The chart includes node spread, a disruption budget, rolling updates, private Service routing and existing Secret references. Kubernetes 1.30+ is required by the default topology configuration.
+
+Helm enables gateway ingress restrictions and HTTPS by default. Supply the actual LiteLLM pod/namespace selectors and an existing Service TLS Secret; missing values fail chart rendering. An existing mesh with enforced mTLS can use `transportSecurity.mode: mesh`. See the [security controls and verification notes](docs/security.md).
 
 Enterprise CA bundles can be mounted from an existing ConfigMap or Secret; the application adds them to public trust for Graph, Entra OBO and signing-key retrieval. Manual builds support Harbor/GHCR, amd64/arm64, optional build CA trust and mirrored base images. CI is optional. Container builds, image publication and live cluster HA verification remain pending.
 

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = Field(default_factory=list)
     http_timeout_seconds: float = Field(default=15, ge=1, le=120)
     obo_cache_entries: int = Field(default=128, ge=1, le=4096)
+    obo_max_concurrent_exchanges: int = Field(default=4, ge=1, le=32)
     extra_ca_file: FilePath | None = None
 
     @field_validator("resource_url")

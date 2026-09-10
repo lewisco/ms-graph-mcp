@@ -20,6 +20,7 @@ config:
   allowedOrigins: []
   httpTimeoutSeconds: 15
   oboCacheEntries: 128
+  oboMaxConcurrentExchanges: 4
 
 credentials:
   existingSecret: ""
@@ -34,6 +35,12 @@ enterpriseCA:
 
 service:
   port: 8000
+
+# Encrypt the gateway-to-MCP hop. Mesh mode requires an existing enforced mTLS policy.
+transportSecurity:
+  mode: tls
+  # Existing kubernetes.io/tls Secret with tls.crt and tls.key for the Service DNS name.
+  existingSecret: ""
 
 resources:
   requests:
@@ -66,9 +73,10 @@ metadataIngress:
   annotations: {}
   tls: []
 
-# Enable with selectors for the actual LiteLLM pods and, if used, ingress-controller pods.
+# Required by default: selectors for LiteLLM and, if used, ingress-controller pods.
 networkPolicy:
-  enabled: false
+  enabled: true
   ingressFrom: []
   # Cluster DNS and outbound HTTPS must be allowed by your cluster's egress policy.
-  # This optional policy restricts ingress only; it does not add an egress allow-all rule.
+  # Disable only when an existing cluster policy enforces the same gateway restriction.
+  # This policy restricts ingress only; it does not add an egress allow-all rule.

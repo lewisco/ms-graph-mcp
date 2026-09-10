@@ -1,8 +1,10 @@
 # Merge into your existing LiteLLM configuration. Preserve its gateway admission policy.
 # Client URL: https://<litellm-host>/msgraph/mcp
 # No Entra client secret belongs in this server entry.
+# Trust the MCP server certificate issuer in LiteLLM; never disable verification.
+# Use HTTP only with transportSecurity.mode=mesh and enforced mesh mTLS.
 mcp_servers:
   msgraph:
-    url: "http://ms-graph-mcp:8000/mcp"
+    url: "https://ms-graph-mcp.ai.svc:8000/mcp"
     transport: "http"
     auth_type: "oauth_delegate"

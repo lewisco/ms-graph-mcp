@@ -14,6 +14,19 @@ config:
 credentials:
   existingSecret: ms-graph-mcp-entra
   clientSecretKey: client-secret
+transportSecurity:
+  mode: tls
+  existingSecret: ms-graph-mcp-tls
+networkPolicy:
+  enabled: true
+  # Replace these with the actual gateway namespace and pod labels before deploying.
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ai
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: litellm
 enterpriseCA:
   enabled: true
   configMapName: enterprise-ca

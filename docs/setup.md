@@ -2,6 +2,8 @@
 
 Status: local scaffold implemented; real Entra → Open WebUI → LiteLLM → Graph authorization remains unverified. The only Graph operation is `GET /v1.0/me`. This is gate G1's starting point, not the complete Microsoft 365 gateway.
 
+If your administrator has already configured the connection, start with the [user guide](usage.md). For setting names, defaults and limits, use the [configuration reference](configuration.md).
+
 ## 1. Entra registrations
 
 Use the existing WebUI SSO registration for WebUI login. Create these two separate registrations in the same tenant:
@@ -24,7 +26,7 @@ Only `User.Read` is needed for this slice. Broader agreed service permissions ar
 | Value | Example / expected value |
 | --- | --- |
 | Public MCP resource | `https://litellm.example.com/msgraph/mcp` |
-| Internal server endpoint | `http://ms-graph-mcp:8000/mcp` |
+| Internal server endpoint | `https://ms-graph-mcp.ai.svc:8000/mcp` with the default Helm TLS mode |
 | MCP API App ID URI | `api://<MCP_CLIENT_ID>` |
 | Requested OAuth scope | `api://<MCP_CLIENT_ID>/access_as_user` |
 | Incoming access-token `aud` | MCP API client UUID, **not** Graph or the public URL |
@@ -64,7 +66,7 @@ uv run --no-editable ruff format --check src tests
 
 The commands use a regular wheel installation. On this iCloud-backed workspace, macOS marked the editable-install `.pth` file hidden and Python skipped it; a non-editable install avoids that failure. Re-run `uv sync --locked --no-editable --reinstall-package ms-graph-mcp` after source edits when running executables directly from `.venv/bin`.
 
-The process loads required settings at startup. Health/readiness and metadata do not contact Graph and do not prove user authorization. No authentication bypass or development user token is built into the server. Tests use generated RSA keys and mocked Microsoft network responses.
+The process loads required settings at startup. Health/readiness and metadata ignore bearer headers and never perform signing-key retrieval or token exchange; they do not prove user authorization. Protected MCP calls still require valid authorization. Tests use generated RSA keys and mocked Microsoft network responses. Pytest imports the current `src` tree even when the installed wheel has not yet been refreshed.
 
 ## 4. Container and cluster wiring
 
@@ -77,7 +79,7 @@ The runtime is non-root and contains the server dependencies, without document t
 
 Local build attempt on 2026-09-10 stopped at registry metadata timeouts for Docker Hub/GHCR, before build steps ran. The Dockerfile is provided but the image build and container startup are unverified. The packaged server did start successfully outside Docker.
 
-Expose port 8000 privately to LiteLLM. Restrict cluster ingress to the intended gateway and probes; use internal TLS or your authenticated service mesh where required by the cluster. The provided HTTP service URL assumes that protected internal hop. Publish the client-facing LiteLLM URL with HTTPS. Configure outbound access to `login.microsoftonline.com` and `graph.microsoft.com`. Graph and OBO clients ignore HTTP proxy environment variables; JWKS uses urllib's proxy behavior. A unified explicit proxy configuration is not implemented. Enterprise TLS trust is configured separately using `GRAPH_MCP_EXTRA_CA_FILE`.
+Expose port 8000 privately to LiteLLM. Helm enables a NetworkPolicy requiring explicit gateway selectors and HTTPS using `transportSecurity.existingSecret`. Configure LiteLLM to verify the certificate issuer and Service DNS name. HTTP is appropriate only for the loopback development commands or the explicit `transportSecurity.mode: mesh` option with enforced mesh mTLS. Publish the client-facing LiteLLM URL with HTTPS. Configure outbound access to `login.microsoftonline.com` and `graph.microsoft.com`. Graph and OBO clients ignore HTTP proxy environment variables; JWKS uses urllib's proxy behavior. A unified explicit proxy configuration is not implemented. Outbound enterprise TLS trust is configured separately using `GRAPH_MCP_EXTRA_CA_FILE`.
 
 Allow the exact `Host` LiteLLM uses in `GRAPH_MCP_ALLOWED_HOSTS`. For cross-namespace Kubernetes service URLs, include that actual service DNS name and port. The server rejects unexpected Host and Origin headers. An empty origins list accepts requests with no Origin and rejects requests with one; add the exact HTTPS origin if your proxy sends it. Health routes are simple unauthenticated process probes, so network policy remains relevant.
 
@@ -117,7 +119,8 @@ Connect Microsoft in WebUI, discover the tools, and ask it to call `graph_read` 
 Implemented locally:
 
 - Tenant-specific signature, audience, issuer, time, scope, user, and allowed-client validation.
-- OBO via MSAL; per-assertion SHA-256 cache keys, expiry-aware eviction, no refresh-token persistence, no app-only fallback.
+- OBO via MSAL; per-assertion SHA-256 cache keys, expiry-aware eviction, no refresh-token persistence, no app-only fallback. Cache hits run independently of exchanges. Up to four distinct exchanges run concurrently by default; repeated requests for one assertion share an exchange, and sanitized failures have a bounded ten-second backoff.
+- Signing keys have a five-minute TTL and a global thirty-second refresh cooldown, including failed refreshes. Cached-key validation proceeds independently of network refresh. A newly rotated key may require a retry after the cooldown. See [security controls](security.md).
 - Authentication/consent failures before MCP processing become HTTP errors. Valid JSON claims challenges from OBO can be included in `WWW-Authenticate`.
 - Selected `/me` fields returned as one compact JSON text result; no duplicate full structured representation.
 - Graph errors remain tool errors. Graph 401 invalidates the cached downstream token and asks for one retry/reconnection. No transparent Graph claims challenge recovery is implemented yet.

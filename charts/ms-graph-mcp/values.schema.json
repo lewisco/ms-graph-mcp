@@ -22,7 +22,8 @@
         "extraAllowedHosts": {"type": "array", "items": {"type": "string"}},
         "allowedOrigins": {"type": "array", "items": {"type": "string"}},
         "httpTimeoutSeconds": {"type": "number", "minimum": 1, "maximum": 120},
-        "oboCacheEntries": {"type": "integer", "minimum": 1, "maximum": 4096}
+        "oboCacheEntries": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "oboMaxConcurrentExchanges": {"type": "integer", "minimum": 1, "maximum": 32}
       }
     },
     "credentials": {
@@ -44,6 +45,21 @@
     "service": {
       "type": "object",
       "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+    },
+    "transportSecurity": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["tls", "mesh"]},
+        "existingSecret": {"type": "string"}
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "ingressFrom": {"type": "array", "items": {"type": "object"}}
+      }
     },
     "topology": {
       "type": "object",

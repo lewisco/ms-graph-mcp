@@ -38,10 +38,11 @@ docker buildx build --platform linux/amd64 --load \
 
 The Python mirror must match the expected Python 3.12 Debian image layout and include its standard CA bundle; the uv mirror must provide `/uv`. Pin those arguments to approved digests for reproducible base images. Python packages remain locked in `uv.lock`; network access to the locked package sources is required.
 
-## 2. Enterprise CAs: three separate trust locations
+## 2. TLS trust by connection
 
 | Connection | Configure trust here |
 | --- | --- |
+| LiteLLM or metadata ingress → MCP | Server certificate in `transportSecurity.existingSecret`; issuing CA trust and server-name verification in LiteLLM or the ingress controller |
 | MCP → Graph, Entra token endpoint and signing keys | Chart `enterpriseCA`, or `GRAPH_MCP_EXTRA_CA_FILE` outside Kubernetes |
 | Build step → Python package repositories | Optional BuildKit `enterprise_ca` secret below |
 | Docker/BuildKit/Kubernetes node → Harbor or other image registry | Host, builder, and node/container-runtime registry trust configuration |
@@ -79,13 +80,17 @@ kubectl -n ai rollout status deployment/ms-graph-mcp
 
 Create or sync an existing Secret named `ms-graph-mcp-entra` containing the MCP API client secret under `client-secret`. Configure a registry pull Secret such as `harbor-pull` if required. The chart references these resources; credentials are not Helm values. For a private GHCR image, use the equivalent GHCR pull credentials.
 
+The default `transportSecurity.mode: tls` also requires an existing `kubernetes.io/tls` Secret, such as `ms-graph-mcp-tls`, containing `tls.crt` (certificate chain) and `tls.key`. Provision it through your certificate/secret management workflow. The certificate must cover the exact Service DNS name used by LiteLLM, for example `ms-graph-mcp.ai.svc`. Set `transportSecurity.existingSecret` to its name. The chart mounts it read-only with group access for the non-root process, enables Uvicorn HTTPS, and uses HTTPS probes. LiteLLM must trust its issuing CA; the MCP's outbound `enterpriseCA` setting does not configure LiteLLM's trust store. Restart pods after certificate rotation to reload the files.
+
+Replace `networkPolicy.ingressFrom` with your real LiteLLM namespace and pod selectors. The example selects pods labeled `app.kubernetes.io/name: litellm` in namespace `ai`; inspect your deployment labels before using it. Missing peers or a missing TLS Secret name cause chart rendering to fail. The cluster CNI must enforce NetworkPolicy.
+
 Copy [the deployment example](../deploy/values.example.yaml) into an ignored local values file:
 
 ```sh
 cp deploy/values.example.yaml deploy/work.local.yaml
 ```
 
-Replace the tenant/app IDs, LiteLLM public URL, image reference and existing Secret/CA names. Set `enterpriseCA.enabled: false` if no additional runtime CAs are needed. The example uses placeholder registrations and a tag that must be built first.
+Replace the tenant/app IDs, LiteLLM public URL, image reference, gateway selectors and existing credential/TLS Secret/CA names. Set `enterpriseCA.enabled: false` if no additional outbound CAs are needed; this does not disable the inbound HTTPS listener. The example uses placeholder registrations and a tag that must be built first.
 
 ```sh
 helm lint charts/ms-graph-mcp -f deploy/work.local.yaml
@@ -129,16 +134,20 @@ With the example release in namespace `ai`, configure LiteLLM with:
 ```yaml
 mcp_servers:
   msgraph:
-    url: http://ms-graph-mcp.ai.svc:8000/mcp
+    url: https://ms-graph-mcp.ai.svc:8000/mcp
     transport: http
     auth_type: oauth_delegate
 ```
 
 The chart adds its Service DNS names to the allowed Host list. For a custom cluster domain or proxy-rewritten Host, add the exact name and port through `config.extraAllowedHosts`. The Service has no session affinity. WebUI still connects to the public HTTPS LiteLLM resource URL from `config.resourceUrl`.
 
-Use the existing ingress arrangement for LiteLLM. If the advertised OAuth metadata URL needs a separate route, enable `metadataIngress` and configure its ingress class and TLS entries to match that hostname. The generated route exposes only the exact path `/.well-known/oauth-protected-resource` plus the public MCP resource path. It neither exposes `/mcp` directly nor rewrites the metadata path. Verify your controller permits this additional route alongside LiteLLM; alternatively route it through your existing Gateway API/ingress configuration.
+Use the existing ingress arrangement for LiteLLM. If the advertised OAuth metadata URL needs a separate route, enable `metadataIngress` and configure its ingress class and frontend TLS entries to match that hostname. Also configure your controller's HTTPS backend protocol and certificate trust for the MCP Service; frontend TLS alone does not encrypt the backend connection. For ingress-nginx, the backend protocol annotation is `nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"`; configure upstream certificate verification and the matching server name as well. Other controllers need their corresponding settings. The generated route exposes only the exact path `/.well-known/oauth-protected-resource` plus the public MCP resource path. It neither exposes `/mcp` directly nor rewrites the metadata path. Verify your controller permits this additional route alongside LiteLLM; alternatively route it through your existing Gateway API/ingress configuration.
 
-The optional ingress-only NetworkPolicy requires explicit `networkPolicy.ingressFrom` peers. Use selectors matching LiteLLM and, when metadata ingress is enabled, its ingress-controller pods. Namespace and pod selectors inside one peer are ANDed. The policy is disabled by default because workload labels vary. It does not change egress policies. Outbound DNS and Microsoft HTTPS must be reachable; internal TLS/service-mesh transport remains owned by your cluster.
+The ingress-only NetworkPolicy is enabled by default and requires explicit `networkPolicy.ingressFrom` peers. Use selectors matching LiteLLM and, when metadata ingress is enabled, its ingress-controller pods. Namespace and pod selectors inside one peer are ANDed. Disable this policy only when an existing cluster policy enforces the same gateway restriction. It does not change egress policies; outbound DNS and Microsoft HTTPS must be reachable.
+
+For the ingress-nginx protocol and certificate verification settings, use its [backend protocol](https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/#backend-protocol) and [backend certificate authentication](https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/#backend-certificate-authentication) documentation.
+
+For a deployment already protected by enforced service-mesh mTLS, select `transportSecurity.mode: mesh` explicitly and use `http://ms-graph-mcp.ai.svc:8000/mcp` inside that mesh. This option leaves TLS termination to the mesh and does not install or verify its policies. Keep NetworkPolicy enabled and confirm unmeshed/plaintext callers cannot reach the service. The chart has no automatic plaintext fallback.
 
 ## 6. Verify after deployment
 
@@ -148,6 +157,33 @@ kubectl -n ai get pdb ms-graph-mcp
 kubectl -n ai rollout status deployment/ms-graph-mcp
 ```
 
-Check that both replicas are Ready on different nodes, follow the real WebUI → LiteLLM sign-in test in [setup](setup.md), and verify the advertised metadata URL. In a designated test environment, send profile calls while restarting a replica and confirm subsequent calls succeed through the other replica. Test an actual CA rotation and rejected untrusted certificate in that environment as well.
+Check that both replicas are Ready on different nodes, follow the real WebUI → LiteLLM sign-in test in [setup](setup.md), and verify the advertised metadata URL. Confirm the gateway verifies the Service certificate, plaintext connections are rejected in TLS mode, and an unrelated workload cannot connect through the NetworkPolicy. In a designated test environment, send profile calls while restarting a replica and confirm subsequent calls succeed through the other replica. Test an actual CA and server-certificate rotation and rejected untrusted certificate in that environment as well.
 
 Local tests verify TLS against generated enterprise certificates on all three clients, app-instance failover, and Helm-rendered configuration. They do not establish real cluster scheduling, ingress behavior, live tenant authorization, Harbor connectivity, or a successfully published image. Complete those checks before declaring production HA.
+
+## 7. Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Helm requires `transportSecurity.existingSecret` | Provision a server TLS Secret and set its name. Use `mode: mesh` only with an existing enforced mesh mTLS policy. |
+| Helm requires `networkPolicy.ingressFrom` | Set the actual gateway peers; the example's namespace and pod labels are placeholders for your deployment. |
+| Pods are Pending | Check that at least two nodes match the selectors/tolerations and have capacity; default node spread requires two eligible nodes. |
+| Pod fails to mount a Secret or start HTTPS | Check the credential and TLS Secret names in the release namespace, expected keys (`client-secret`, `tls.crt`, `tls.key`), and certificate/key validity. |
+| LiteLLM reports a certificate error | Confirm its upstream URL is HTTPS, the certificate includes the exact Service DNS name, and LiteLLM trusts the issuing CA. The MCP's `enterpriseCA` setting does not configure LiteLLM. |
+| LiteLLM times out connecting to MCP | Check Ready endpoints and gateway pod/namespace selectors. Confirm the CNI enforces the intended policy and that any mesh policy admits the gateway. |
+| MCP rejects Host (HTTP 421) or Origin (HTTP 403) | Add the exact value the gateway sends to `config.extraAllowedHosts` or `config.allowedOrigins`. The public resource URL does not automatically authorize an incoming Host header. |
+| Public OAuth metadata cannot be fetched | Check the exact advertised metadata path, ingress-controller NetworkPolicy peer, backend HTTPS protocol, certificate verification and server name. |
+| Health works but Microsoft authorization fails | Health probes only show process readiness. Check outbound DNS/HTTPS, registration settings, consent, client allowlist and token mapping in the [setup guide](setup.md). |
+| Short bursts receive authentication HTTP 503 | Honor `Retry-After: 10`. Check upstream availability and `config.oboMaxConcurrentExchanges`; inspect expected concurrency before raising its limit. |
+
+For Graph-specific tool errors and reconnect guidance, see the [user guide](usage.md#results-and-errors). All application settings and limits are listed in the [configuration reference](configuration.md).
+
+## 8. Upgrading the earlier HTTP-default scaffold
+
+1. Build a new image from the fixed source with a new tag or digest. Reusing an old image tag with `IfNotPresent` can leave existing nodes running the earlier code.
+2. Provision the MCP Service TLS certificate and configure its issuing CA in LiteLLM. Set the new image reference, `transportSecurity.existingSecret`, and actual `networkPolicy.ingressFrom` peers in your local values. Deployments using enforced mesh mTLS must explicitly choose `transportSecurity.mode: mesh`.
+3. Plan a maintenance window for the first HTTP-to-HTTPS switch. A rolling update can briefly mix HTTP and HTTPS pods behind the same Service, and a single LiteLLM URL cannot speak both protocols. The two-replica setting does not make this transport migration seamless.
+4. Run Helm lint/template with the new values, then the upgrade command in section 3. Wait for the rollout to finish before changing LiteLLM's upstream URL to HTTPS and resuming tool use. Update any metadata ingress backend TLS settings during the same window. Mesh mode retains the HTTP application URL inside the mesh.
+5. Verify the client-facing metadata route, a signed-in user's `/me` result, certificate verification, and denial of connections from unrelated workloads. Subsequent deployments that keep the same transport can use the normal rolling-update flow.
+
+No Entra client secret belongs in the LiteLLM MCP server entry. The application/API scopes and public resource URL do not need to change solely for these security fixes.

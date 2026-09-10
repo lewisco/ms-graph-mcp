@@ -32,6 +32,15 @@ Sources are linked beside the relevant claims in [architecture](architecture.md)
 - Helm render tests cover replica counts 2/3/5, rolling-update settings, disruption budget, node/zone spread, ConfigMap/Secret CA mounts, existing credential references, digest-based images, metadata routing and NetworkPolicy peers. Invalid one-replica and ambiguous/unsafe configurations are rejected during render. A four-replica configuration also rendered successfully.
 - Helm chart packaging and documentation validation completed. Image builds/publication, actual scheduling, live failover, registry trust, enterprise proxy behavior and CA rotation in a cluster remain pending.
 
+### Security review fixes — 2026-09-10
+
+- **119 tests passed**; Ruff lint/format, Helm lint and diff whitespace checks passed. The upstream Starlette TestClient/AnyIO deprecation warning remains.
+- Built the server wheel offline, refreshed the local non-editable installation, and verified that all nine installed source modules match the reviewed source tree. No dependency versions changed.
+- Signing-key tests cover unknown-ID floods, refresh cooldown, cached-key progress during a blocked fetch, failed fetches, expiry, rotation and caller cancellation. Public health/metadata requests cannot invoke bearer verification or OBO.
+- OBO tests demonstrate that a failing user's exchange cannot block another user's cached token or an independent exchange. Same-assertion requests share work; cancellation preserves the concurrency bound; sanitized failure backoff is bounded and retains claims challenges.
+- Helm defaults now render gateway NetworkPolicy and an HTTPS listener with an existing TLS Secret. Tests cover missing deployment inputs and explicit mesh mode. A real local Uvicorn HTTPS listener serves health and protected MCP routes, rejects plaintext, and passes client checks for issuer trust and hostname validation.
+- See [security controls](security.md) and [deployment migration inputs](kubernetes.md). Live cluster policy enforcement, certificate rotation and Microsoft/gateway integration remain pending.
+
 ## 2. First implementation gates
 
 Complete these narrow slices before expanding to the complete service catalog. They are implementation sequencing, not permission to drop any agreed service.

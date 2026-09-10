@@ -35,9 +35,8 @@ def signing_key():
 @pytest.fixture
 def jwks(signing_key):
     # Only network key retrieval is replaced; actual JWT signature/claim checks still run.
-    return SimpleNamespace(
-        get_signing_key_from_jwt=lambda token: SimpleNamespace(key=signing_key.public_key())
-    )
+    key = SimpleNamespace(key=signing_key.public_key(), key_id="test-key")
+    return SimpleNamespace(get_signing_keys=lambda *, refresh=False: [key])
 
 
 @pytest.fixture

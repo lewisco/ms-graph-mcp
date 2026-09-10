@@ -53,6 +53,7 @@ def test_ha_and_secret_contract(replicas, monkeypatch):
     }
     config = resources["ConfigMap"]["data"]
     assert "GRAPH_MCP_CLIENT_SECRET" not in config
+    assert config["GRAPH_MCP_OBO_MAX_CONCURRENT_EXCHANGES"] == "4"
     assert "ms-graph-mcp.ai.svc:8000" in json.loads(config["GRAPH_MCP_ALLOWED_HOSTS"])
     for key, value in config.items():
         if key != "GRAPH_MCP_EXTRA_CA_FILE":
@@ -78,7 +79,8 @@ def test_ca_mount_options_and_metadata_route():
         == "enterprise-secret"
     )
     resources = render("enterpriseCA.enabled=false")
-    assert "volumes" not in resources["Deployment"]["spec"]["template"]["spec"]
+    volumes = resources["Deployment"]["spec"]["template"]["spec"]["volumes"]
+    assert [volume["name"] for volume in volumes] == ["server-tls"]
     assert "GRAPH_MCP_EXTRA_CA_FILE" not in resources["ConfigMap"]["data"]
 
 
@@ -106,7 +108,10 @@ def test_required_zone_spread():
         "credentials.existingSecret=",
         "image.tag=",
         "podDisruptionBudget.maxUnavailable=2",
-        "networkPolicy.enabled=true",
+        "networkPolicy.ingressFrom=null",
+        "transportSecurity.existingSecret=",
+        "transportSecurity.mode=plaintext",
+        "config.oboMaxConcurrentExchanges=0",
     ],
 )
 def test_invalid_deployments_fail_during_render(invalid):
@@ -114,10 +119,44 @@ def test_invalid_deployments_fail_during_render(invalid):
 
 
 def test_network_policy_with_explicit_peer():
-    resources = render(
-        "networkPolicy.enabled=true",
-        "networkPolicy.ingressFrom[0].podSelector.matchLabels.app=litellm",
-    )
+    resources = render()
     policy = resources["NetworkPolicy"]["spec"]
-    assert policy["ingress"][0]["from"] == [{"podSelector": {"matchLabels": {"app": "litellm"}}}]
+    assert policy["ingress"][0]["from"] == [
+        {
+            "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "ai"}},
+            "podSelector": {"matchLabels": {"app.kubernetes.io/name": "litellm"}},
+        }
+    ]
     assert policy["policyTypes"] == ["Ingress"]
+    assert policy["ingress"][0]["ports"] == [{"port": 8000, "protocol": "TCP"}]
+
+
+def test_tls_is_default_with_secret_and_https_probes():
+    resources = render()
+    pod = resources["Deployment"]["spec"]["template"]["spec"]
+    container = pod["containers"][0]
+    assert "--ssl-certfile" in container["args"] and "--ssl-keyfile" in container["args"]
+    assert pod["securityContext"]["fsGroup"] == 10001
+    tls = next(volume for volume in pod["volumes"] if volume["name"] == "server-tls")
+    assert tls["secret"]["secretName"] == "ms-graph-mcp-tls"
+    assert tls["secret"]["defaultMode"] == 0o440
+    assert {item["key"] for item in tls["secret"]["items"]} == {"tls.crt", "tls.key"}
+    mount = next(item for item in container["volumeMounts"] if item["name"] == "server-tls")
+    assert mount["readOnly"] and mount["mountPath"] == "/etc/ms-graph-mcp/tls"
+    for probe in ("startupProbe", "readinessProbe", "livenessProbe"):
+        assert container[probe]["httpGet"]["scheme"] == "HTTPS"
+    assert resources["Service"]["spec"]["ports"][0]["appProtocol"] == "https"
+
+
+def test_mesh_mode_is_explicit_and_keeps_gateway_policy():
+    resources = render("transportSecurity.mode=mesh", "enterpriseCA.enabled=false")
+    pod = resources["Deployment"]["spec"]["template"]["spec"]
+    container = pod["containers"][0]
+    assert "--ssl-certfile" not in container["args"]
+    assert "volumes" not in pod and "volumeMounts" not in container
+    assert container["readinessProbe"]["httpGet"]["scheme"] == "HTTP"
+    assert "NetworkPolicy" in resources
+
+
+def test_policy_can_be_explicitly_delegated_to_cluster():
+    assert "NetworkPolicy" not in render("networkPolicy.enabled=false")

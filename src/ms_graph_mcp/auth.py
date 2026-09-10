@@ -1,6 +1,5 @@
 """Validate tenant-specific Entra v2 access tokens before performing OBO."""
 
-import asyncio
 from uuid import UUID
 
 import jwt
@@ -10,6 +9,7 @@ from pydantic import Field, SecretStr
 from ms_graph_mcp.config import Settings
 from ms_graph_mcp.errors import AuthFailure
 from ms_graph_mcp.obo import OboClient
+from ms_graph_mcp.signing_keys import SigningKeyCache
 from ms_graph_mcp.tls import create_ssl_context
 
 
@@ -28,7 +28,7 @@ class EntraVerifier:
             timeout=settings.http_timeout_seconds,
             ssl_context=create_ssl_context(settings),
         )
-        self._key_lock = asyncio.Lock()
+        self._signing_keys = SigningKeyCache(self.jwks)
 
     async def verify_token(self, token: str) -> DelegatedAccessToken | None:
         if len(token) > 32768:
@@ -38,8 +38,9 @@ class EntraVerifier:
             if header.get("alg") != "RS256" or not isinstance(header.get("kid"), str):
                 return None
             # JWKS location comes only from the configured tenant, never from jku/x5u in a JWT.
-            async with self._key_lock:
-                key = await asyncio.to_thread(self.jwks.get_signing_key_from_jwt, token)
+            key = await self._signing_keys.get(header["kid"])
+            if key is None:
+                return None
             claims = jwt.decode(
                 token,
                 key.key,
@@ -68,7 +69,7 @@ class EntraVerifier:
             raise AuthFailure(
                 503, "temporarily_unavailable", "Microsoft signing keys are unavailable."
             ) from None
-        except (jwt.PyJWTError, ValueError, TypeError, KeyError, AttributeError):
+        except (jwt.PyJWTError, ValueError, TypeError, KeyError, AttributeError, RecursionError):
             return None
 
         # Resolve OBO before opening the MCP response: consent/CA challenges can then be HTTP 401s.
@@ -84,3 +85,6 @@ class EntraVerifier:
             claims={"iss": self.settings.issuer, "tid": str(self.settings.tenant_id)},
             graph_token=graph_token.value,
         )
+
+    async def aclose(self) -> None:
+        await self._signing_keys.aclose()

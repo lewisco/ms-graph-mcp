@@ -4,6 +4,10 @@
 {{- if and .Values.enterpriseCA.enabled .Values.enterpriseCA.configMapName .Values.enterpriseCA.secretName -}}
 {{- fail "enterpriseCA accepts only one of configMapName or secretName" -}}
 {{- end -}}
+{{- $tls := eq .Values.transportSecurity.mode "tls" -}}
+{{- if and $tls (not .Values.transportSecurity.existingSecret) -}}
+{{- fail "Set transportSecurity.existingSecret for HTTPS, or select mode=mesh with enforced service-mesh mTLS" -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -38,6 +42,9 @@ spec:
         runAsNonRoot: true
         runAsUser: 10001
         runAsGroup: 10001
+        {{- if $tls }}
+        fsGroup: 10001
+        {{- end }}
         seccompProfile:
           type: RuntimeDefault
       {{- with .Values.imagePullSecrets }}
@@ -95,6 +102,12 @@ spec:
             - --no-proxy-headers
             - --timeout-graceful-shutdown
             - "25"
+            {{- if $tls }}
+            - --ssl-certfile
+            - /etc/ms-graph-mcp/tls/tls.crt
+            - --ssl-keyfile
+            - /etc/ms-graph-mcp/tls/tls.key
+            {{- end }}
           ports:
             - name: http
               containerPort: 8000
@@ -113,15 +126,15 @@ spec:
             capabilities:
               drop: ["ALL"]
           startupProbe:
-            httpGet: {path: /healthz, port: http}
+            httpGet: {path: /healthz, port: http, scheme: {{ ternary "HTTPS" "HTTP" $tls }}}
             periodSeconds: 2
             failureThreshold: 30
           readinessProbe:
-            httpGet: {path: /readyz, port: http}
+            httpGet: {path: /readyz, port: http, scheme: {{ ternary "HTTPS" "HTTP" $tls }}}
             periodSeconds: 5
             timeoutSeconds: 2
           livenessProbe:
-            httpGet: {path: /healthz, port: http}
+            httpGet: {path: /healthz, port: http, scheme: {{ ternary "HTTPS" "HTTP" $tls }}}
             periodSeconds: 10
             timeoutSeconds: 2
           lifecycle:
@@ -130,14 +143,22 @@ spec:
                 command: ["python", "-c", "import time; time.sleep(10)"]
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- if .Values.enterpriseCA.enabled }}
+          {{- if or .Values.enterpriseCA.enabled $tls }}
           volumeMounts:
+            {{- if .Values.enterpriseCA.enabled }}
             - name: enterprise-ca
               mountPath: /etc/ms-graph-mcp/ca
               readOnly: true
+            {{- end }}
+            {{- if $tls }}
+            - name: server-tls
+              mountPath: /etc/ms-graph-mcp/tls
+              readOnly: true
+            {{- end }}
           {{- end }}
-      {{- if .Values.enterpriseCA.enabled }}
+      {{- if or .Values.enterpriseCA.enabled $tls }}
       volumes:
+        {{- if .Values.enterpriseCA.enabled }}
         - name: enterprise-ca
           {{- if .Values.enterpriseCA.configMapName }}
           configMap:
@@ -149,4 +170,16 @@ spec:
             items:
               - key: {{ .Values.enterpriseCA.key }}
                 path: enterprise-ca.pem
+        {{- end }}
+        {{- if $tls }}
+        - name: server-tls
+          secret:
+            secretName: {{ .Values.transportSecurity.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        {{- end }}
       {{- end }}
