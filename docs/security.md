@@ -24,6 +24,8 @@ For an existing installation, configure the TLS Secret, change LiteLLM's upstrea
 
 ## Verification and remaining boundaries
 
+The [active vulnerability release policy](release-vulnerability-policy.md) accepts the exact, expiring DHI OS baseline using Trivy alone. It retains raw findings and blocks all findings outside that acceptance. The [DHI discrepancy review](security-reviews/dhi-2026-09-10.md) records the 14 unresolved findings and a Docker support request draft.
+
 Regression tests cover unknown-key bursts, cached-key progress during refresh, failed refresh backoff, expiry and rotation, request cancellation, public-route bypass of authentication work, isolated concurrent OBO exchanges, failed-exchange backoff, and overload rejection. Helm tests verify the default NetworkPolicy, TLS Secret mounts, HTTPS listener arguments/probes, and explicit mesh mode. Existing JWT rejection, user-isolation, Graph destination/redirect, and enterprise CA tests remain in place.
 
 Live Entra/LiteLLM interoperability, certificate issuance/rotation, ingress-controller backend TLS and cluster NetworkPolicy enforcement require deployment verification. No live tenant or cluster changes are made by the local test suite.

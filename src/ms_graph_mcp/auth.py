@@ -69,7 +69,7 @@ class EntraVerifier:
             raise AuthFailure(
                 503, "temporarily_unavailable", "Microsoft signing keys are unavailable."
             ) from None
-        except (jwt.PyJWTError, ValueError, TypeError, KeyError, AttributeError, RecursionError):
+        except jwt.PyJWTError, ValueError, TypeError, KeyError, AttributeError, RecursionError:
             return None
 
         # Resolve OBO before opening the MCP response: consent/CA challenges can then be HTTP 401s.

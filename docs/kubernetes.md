@@ -8,9 +8,9 @@ Only the authentication/profile scaffold is currently implemented. Its stateless
 
 The Git remote is `https://github.com/lewisco/ms-graph-mcp.git`. Container images belong in a registry such as Harbor or GitHub Container Registry (GHCR), not in the Git repository. The commands below are manual examples; no image has been published by adding them.
 
-The default build uses `dhi.io/python:3.12-debian13-dev` and the matching `dhi.io/python:3.12-debian13` runtime. Both support amd64/arm64. The runtime runs as UID/GID 65532; container and Helm commands use `/app/.venv/bin/python` directly. It does not depend on a shell or a `python` alias. [DHI Python definitions](https://github.com/docker-hardened-images/catalog/tree/main/image/python/debian-13)
+The default build uses `dhi.io/python:3.14-debian13-dev` and the matching `dhi.io/python:3.14-debian13` runtime. Both support amd64/arm64. The runtime runs as UID/GID 65532; container and Helm commands use `/app/.venv/bin/python` directly. It does not depend on a shell or a `python` alias. [DHI Python definitions](https://github.com/docker-hardened-images/catalog/tree/main/image/python/debian-13)
 
-**Release criterion: zero reported vulnerabilities at every severity in the final runtime image, including OS and Python dependencies.** A clean base image alone does not pass this criterion. Use the [manual release gate](../scripts/release_image.py); Docker build alone is a development build and does not perform the scan.
+**Release criterion: zero findings outside the approved DHI OS baseline; all Python dependency findings block release.** A clean base image alone does not pass this criterion. Use the [manual release gate](../scripts/release_image.py); Docker build alone is a development build and does not perform the scan.
 
 Install Docker with Buildx, Python 3.11+ on the build host, and a current Trivy CLI supporting the flags in the script. Log into DHI and your destination registry through Docker's credential store. No CI service is required.
 
@@ -36,23 +36,23 @@ python3 scripts/release_image.py \
 
 Select `linux/amd64` even on Apple Silicon when that is the cluster architecture. Omit `--push` to build, scan and tag locally. Each invocation covers one platform: run the gate separately for amd64 and arm64. The script does not publish a multi-platform manifest; do not use a raw multi-platform `--push` command as a substitute for scanning every architecture. [Docker platform support](https://docs.docker.com/build/building/multi-platform/)
 
-The gate builds locally with refreshed base-image metadata, checks runtime imports under non-root/read-only restrictions, exports the immutable image ID to an archive, downloads a vulnerability database into a new cache and scans that exact archive. It explicitly includes UNKNOWN/LOW/MEDIUM/HIGH/CRITICAL and unfixed vulnerabilities, and checks that OS and Python application packages were inventoried. Local Trivy config, ignore files and `TRIVY_*` environment overrides cannot weaken the gate. Download/scan errors, stale DB metadata, incomplete coverage, suppressed findings or any vulnerability block tagging/publishing the release image. [Trivy image scan options](https://trivy.dev/docs/latest/references/configuration/cli/trivy_image/)
+The gate builds locally with refreshed base-image metadata, checks runtime imports under non-root/read-only restrictions, exports the immutable image ID to an archive, downloads a vulnerability database into a new cache and scans that exact archive. It explicitly includes UNKNOWN/LOW/MEDIUM/HIGH/CRITICAL and unfixed vulnerabilities, and checks that OS and Python application packages were inventoried. Local Trivy config, ignore files and `TRIVY_*` environment overrides cannot weaken the gate. Download/scan errors, stale DB metadata, incomplete coverage, suppressed findings or any vulnerability outside the accepted OS baseline block tagging/publishing the release image. [Trivy image scan options](https://trivy.dev/docs/latest/references/configuration/cli/trivy_image/)
 
-Each run writes evidence into a unique directory under `dist/`: `scan.json`, database metadata and scanner version in `release.json`, Buildx metadata, archive SHA-256, image ID and, after publication, registry digests. Failed runs retain evidence with `status: blocked`. The archive can be large; retain it according to your release-evidence policy. The local image ID is a configuration digest; use the recorded registry manifest digest for Helm's `image.digest` after a successful push. Database downloads require network access and up-to-date upstream metadata; the gate fails closed when these are unavailable. Configure enterprise trust on the host for Trivy as well as on Docker when needed.
+Each run writes evidence into a unique directory under `dist/`: `scan.json`, database metadata and scanner version in `release.json`, Buildx metadata, archive SHA-256, Docker image ID, verified image configuration digest and, after publication, registry digests. Failed runs retain evidence with `status: blocked`. The archive can be large; retain it according to your release-evidence policy. Docker's image ID can identify a configuration, manifest, or index depending on the image store. The gate verifies the archive's digest chain to bind Trivy's configuration digest to that image ID. Use the recorded registry manifest digest for Helm's `image.digest` after a successful push. Database downloads require network access and up-to-date upstream metadata; the gate fails closed when these are unavailable. Configure enterprise trust on the host for Trivy as well as on Docker when needed.
 
 For base images mirrored inside work, provide matching approved DHI references, preferably pinned to digests:
 
 ```sh
 python3 scripts/release_image.py \
   --platform linux/amd64 \
-  --build-arg PYTHON_BUILD_IMAGE=harbor.example.com/base/python:3.12-debian13-dev \
-  --build-arg PYTHON_RUNTIME_IMAGE=harbor.example.com/base/python:3.12-debian13 \
+  --build-arg PYTHON_BUILD_IMAGE=harbor.example.com/base/python:3.14-debian13-dev \
+  --build-arg PYTHON_RUNTIME_IMAGE=harbor.example.com/base/python:3.14-debian13 \
   --build-arg UV_IMAGE=harbor.example.com/base/uv:0.12.12 \
   --image harbor.example.com/ai/ms-graph-mcp:0.1.0-dhi-amd64 \
   --push
 ```
 
-The previous single `PYTHON_IMAGE` argument has been replaced by separate build/runtime arguments. The Python mirrors must retain compatible Python paths and ABI and include the standard CA bundle; the uv mirror must provide `/uv`. Python packages remain locked in `uv.lock`; network access to the locked package sources is required. The gate does not suppress findings or automatically change dependency versions: repair a finding, rebuild and rescan.
+The previous single `PYTHON_IMAGE` argument has been replaced by separate build/runtime arguments. The Python mirrors must retain compatible Python paths and ABI and include the standard CA bundle; the uv mirror must provide `/uv`. Python packages remain locked in `uv.lock`; network access to the locked package sources is required. The gate retains all findings. Known OS findings may pass under the exact, expiring baseline; new findings require repair or an explicitly reviewed acceptance update.
 
 ## 2. TLS trust by connection
 
@@ -205,3 +205,21 @@ For Graph-specific tool errors and reconnect guidance, see the [user guide](usag
 5. Verify the client-facing metadata route, a signed-in user's `/me` result, certificate verification, and denial of connections from unrelated workloads. Subsequent deployments that keep the same transport can use the normal rolling-update flow.
 
 No Entra client secret belongs in the LiteLLM MCP server entry. The application/API scopes and public resource URL do not need to change solely for these security fixes.
+
+### Comparing Docker Scout with Trivy
+
+For an independent local Scout audit, build with `docker buildx build --pull --load --platform linux/amd64 --provenance=mode=max --sbom=true -t ms-graph-mcp:scout-audit .`, then run `docker scout cves --platform linux/amd64 local://ms-graph-mcp:scout-audit`. Pin the runtime build argument to the digest being investigated when reproducing a scan. Full provenance and SBOM allow Scout to discover the DHI base and apply its vendor VEX attestations. [Docker DHI scanning](https://docs.docker.com/dhi/how-to/scan/)
+
+The 2026-09-10 Python 3.14.7 app audit returned Scout 0, unfiltered Trivy 47, and Trivy with the DHI VEX repository 14 remaining/33 suppressed. These are different assessment modes. Scout is not required by the active release policy. The Trivy gate accepts the exact known OS baseline and retains the raw findings. See [acceptance evidence](acceptance.md).
+
+### Trivy-only accepted baseline
+
+Docker Scout is not required at work. The default release command uses `security/dhi-os-baseline.json`, pins its runtime digest and permits only its exact known OS findings. It still scans every severity and blocks all Python findings. See [active policy](release-vulnerability-policy.md).
+
+```sh
+python3 scripts/release_image.py --image harbor.example/ai/ms-graph-mcp:python314-reviewed --platform linux/amd64
+```
+
+Use your actual repository/tag. Add `--push` only when publication is intended. Mirrored runtime overrides must include the accepted digest, for example `--build-arg PYTHON_RUNTIME_IMAGE=harbor.example/dhi-cache/python:3.14-debian13@sha256:ee0154c1c675e1f51f361c239061128719c06cc7130c6fae0a8362b0ba777267`. Confirm the mirror serves that digest before running. Build/uv mirrors remain configurable.
+
+Use `--strict` for the former zero-unfiltered-findings gate. The bundled acceptance is amd64-only and expires at the JSON's `expires_at`; an arm64 run requires its own reviewed baseline or a passing strict scan. A new base digest is not covered automatically. Harbor's own vulnerability enforcement remains independent.

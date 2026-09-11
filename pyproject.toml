@@ -2,7 +2,7 @@
 name = "ms-graph-mcp"
 version = "0.1.0"
 description = "Delegated Microsoft Graph access over Streamable HTTP MCP"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.14,<3.15"
 dependencies = [
   "httpx==0.28.1",
   "mcp==2.2.0",
@@ -35,7 +35,7 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 100
 
 [tool.ruff.lint]

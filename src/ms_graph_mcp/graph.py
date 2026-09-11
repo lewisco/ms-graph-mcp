@@ -114,7 +114,7 @@ class GraphClient:
                         )
                 try:
                     profile = json.loads(raw)
-                except (ValueError, UnicodeError):
+                except ValueError, UnicodeError:
                     raise GraphFailure(
                         "invalid_graph_response",
                         "Graph returned invalid JSON.",

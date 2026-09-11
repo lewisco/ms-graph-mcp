@@ -132,7 +132,7 @@ class OboClient:
         try:
             try:
                 result = await asyncio.to_thread(self._exchange, assertion)
-            except (requests.RequestException, ValueError, OSError):
+            except requests.RequestException, ValueError, OSError:
                 raise AuthFailure(
                     503, "temporarily_unavailable", "Microsoft token exchange is unavailable."
                 ) from None
@@ -162,7 +162,7 @@ class OboClient:
         if isinstance(access, str) and access:
             try:
                 expires = min(self._clock() + int(result["expires_in"]), assertion_expiry)
-            except (KeyError, ValueError, TypeError, OverflowError):
+            except KeyError, ValueError, TypeError, OverflowError:
                 raise AuthFailure(
                     503, "temporarily_unavailable", "Invalid token expiry from Microsoft."
                 ) from None
@@ -177,7 +177,7 @@ class OboClient:
             if isinstance(claims, str) and len(claims) <= 4096:
                 try:
                     claims = json.dumps(json.loads(claims), separators=(",", ":"))
-                except (ValueError, TypeError, RecursionError):
+                except ValueError, TypeError, RecursionError:
                     claims = None
             else:
                 claims = None

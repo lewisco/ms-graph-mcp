@@ -1,6 +1,6 @@
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.12.12
-ARG PYTHON_BUILD_IMAGE=dhi.io/python:3.12-debian13-dev
-ARG PYTHON_RUNTIME_IMAGE=dhi.io/python:3.12-debian13
+ARG PYTHON_BUILD_IMAGE=dhi.io/python:3.14-debian13-dev
+ARG PYTHON_RUNTIME_IMAGE=dhi.io/python:3.14-debian13
 FROM ${UV_IMAGE} AS uv
 FROM ${PYTHON_BUILD_IMAGE} AS builder
 USER 0
@@ -14,8 +14,8 @@ RUN --mount=type=secret,id=enterprise_ca \
       cat /etc/ssl/certs/ca-certificates.crt /run/secrets/enterprise_ca > /tmp/build-ca.pem; \
       export SSL_CERT_FILE=/tmp/build-ca.pem; \
     fi; \
-    uv sync --locked --no-dev --no-editable --python python3.12 --no-managed-python; \
-    /app/.venv/bin/python -c 'import sys; assert sys.version_info[:2] == (3, 12)'; \
+    uv sync --locked --no-dev --no-editable --python python3.14 --no-managed-python; \
+    /app/.venv/bin/python -c 'import sys; assert sys.version_info[:2] == (3, 14)'; \
     rm -f /tmp/build-ca.pem
 
 FROM ${PYTHON_RUNTIME_IMAGE} AS runtime

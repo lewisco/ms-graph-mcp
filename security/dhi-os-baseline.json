@@ -1,0 +1,485 @@
+{
+  "schema_version": 1,
+  "policy": "accepted-dhi-os-baseline",
+  "decision": "User authorized proceeding with known findings using Trivy only; risk accepted, not a non-applicability assertion.",
+  "created_at": "2026-09-11T00:23:28.953060+00:00",
+  "expires_at": "2026-10-11T00:23:28.953247+00:00",
+  "platform": "linux/amd64",
+  "runtime_image": "dhi.io/python:3.14-debian13@sha256:ee0154c1c675e1f51f361c239061128719c06cc7130c6fae0a8362b0ba777267",
+  "runtime_digest": "sha256:ee0154c1c675e1f51f361c239061128719c06cc7130c6fae0a8362b0ba777267",
+  "findings": [
+    {
+      "VulnerabilityID": "CVE-2026-42250",
+      "PkgName": "libbz2-1.0",
+      "InstalledVersion": "1.0.8-6+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-18374",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-19499",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-19542",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-5435",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-5450",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-5928",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-6238",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-6368",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-6791",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-77117",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-80489",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2010-4756",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2018-20796",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2019-1010022",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2019-1010023",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2019-1010024",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2019-1010025",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2019-9192",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-76956",
+      "PkgName": "libexpat1",
+      "InstalledVersion": "2.8.3-1~deb13u1+dhi2",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-76957",
+      "PkgName": "libexpat1",
+      "InstalledVersion": "2.8.3-1~deb13u1+dhi2",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2025-66382",
+      "PkgName": "libexpat1",
+      "InstalledVersion": "2.8.3-1~deb13u1+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-66046",
+      "PkgName": "libexpat1",
+      "InstalledVersion": "2.8.3-1~deb13u1+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "TEMP-0000000-639065",
+      "PkgName": "liblzma5",
+      "InstalledVersion": "5.8.1-1+dhi1",
+      "Severity": "UNKNOWN",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2025-69720",
+      "PkgName": "libncursesw6",
+      "InstalledVersion": "6.5+20250216-2+dhi4",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2025-6141",
+      "PkgName": "libncursesw6",
+      "InstalledVersion": "6.5+20250216-2+dhi4",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-11822",
+      "PkgName": "libsqlite3-0",
+      "InstalledVersion": "3.46.1-7+deb13u1+dhi2",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-11824",
+      "PkgName": "libsqlite3-0",
+      "InstalledVersion": "3.46.1-7+deb13u1+dhi2",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-39113",
+      "PkgName": "libsqlite3-0",
+      "InstalledVersion": "3.46.1-7+deb13u1+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-50812",
+      "PkgName": "libsqlite3-0",
+      "InstalledVersion": "3.46.1-7+deb13u1+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-50813",
+      "PkgName": "libsqlite3-0",
+      "InstalledVersion": "3.46.1-7+deb13u1+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2021-45346",
+      "PkgName": "libsqlite3-0",
+      "InstalledVersion": "3.46.1-7+deb13u1+dhi2",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2025-70873",
+      "PkgName": "libsqlite3-0",
+      "InstalledVersion": "3.46.1-7+deb13u1+dhi2",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2025-69720",
+      "PkgName": "libtinfo6",
+      "InstalledVersion": "6.5+20250216-2+dhi4",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2025-6141",
+      "PkgName": "libtinfo6",
+      "InstalledVersion": "6.5+20250216-2+dhi4",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.41.5-0+deb13u1+dhi2",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.41.5-0+deb13u1+dhi2",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.41.5-0+deb13u1+dhi2",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.41.5-0+deb13u1+dhi2",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-3184",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.41.5-0+deb13u1+dhi2",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2022-0563",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.41.5-0+deb13u1+dhi2",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2025-69720",
+      "PkgName": "ncurses-base",
+      "InstalledVersion": "6.5+20250216-2+dhi4",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2025-6141",
+      "PkgName": "ncurses-base",
+      "InstalledVersion": "6.5+20250216-2+dhi4",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2025-69720",
+      "PkgName": "ncurses-bin",
+      "InstalledVersion": "6.5+20250216-2+dhi4",
+      "Severity": "HIGH",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2025-6141",
+      "PkgName": "ncurses-bin",
+      "InstalledVersion": "6.5+20250216-2+dhi4",
+      "Severity": "LOW",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-27171",
+      "PkgName": "zlib1g",
+      "InstalledVersion": "1:1.3.dfsg+really1.3.1-1+dhi3",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-85091",
+      "PkgName": "zlib1g",
+      "InstalledVersion": "1:1.3.dfsg+really1.3.1-1+dhi3",
+      "Severity": "MEDIUM",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      }
+    }
+  ],
+  "source_scan_sha256": "6993494bc8b9c4b28aabdc29e86c283e15d538abf3a8e3e9ecbb68eca467849e",
+  "source_image_id": "sha256:8696c8247b717d644a30c0c72f4c072a5b6db21b55cdc32e7c61ca82ffb77f77",
+  "source_scanner": "Trivy 0.74.0"
+}

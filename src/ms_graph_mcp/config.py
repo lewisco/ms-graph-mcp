@@ -60,7 +60,7 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def no_wildcard_ingress(self) -> "Settings":
+    def no_wildcard_ingress(self) -> Settings:
         for host in self.allowed_hosts:
             if not host or "*" in host or "/" in host or any(c.isspace() for c in host):
                 raise ValueError("allowed_hosts must contain explicit host[:port] values")

@@ -41,7 +41,7 @@ The public resource URL is explicitly mapped to the validated Entra API audience
 
 ## 3. Run locally
 
-Install Python 3.12 and `uv`, or let `uv sync` install Python from `.python-version`.
+Install Python 3.14 and `uv`, or let `uv sync` install Python from `.python-version`.
 
 ```sh
 uv sync --locked --no-editable

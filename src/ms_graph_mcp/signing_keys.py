@@ -50,7 +50,7 @@ class SigningKeyCache:
             self._keys = replacement
             self._expires_at = self._clock() + 300
             self._unavailable = False
-        except (jwt.PyJWTError, ValueError, TypeError, OSError, RecursionError):
+        except jwt.PyJWTError, ValueError, TypeError, OSError, RecursionError:
             # Keep previously trusted keys only until their original TTL expires.
             self._unavailable = True
         finally:

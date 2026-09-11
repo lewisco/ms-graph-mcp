@@ -35,7 +35,7 @@ uv run --no-editable ruff check src tests
 uv run --no-editable ruff format --check src tests
 ```
 
-Dependencies are locked in `uv.lock` for Python 3.12. A non-root [Dockerfile](Dockerfile) and [LiteLLM example](deploy/litellm.example.yaml) are included. Tests replace Microsoft network calls; they do not establish real tenant access.
+Dependencies are locked in `uv.lock` for Python 3.14. A non-root [Dockerfile](Dockerfile) and [LiteLLM example](deploy/litellm.example.yaml) are included. Tests replace Microsoft network calls; they do not establish real tenant access.
 
 ## Deploy on Kubernetes
 
@@ -43,7 +43,7 @@ Use the [Helm chart](charts/ms-graph-mcp/values.yaml) and [Kubernetes/manual bui
 
 Helm enables gateway ingress restrictions and HTTPS by default. Supply the actual LiteLLM pod/namespace selectors and an existing Service TLS Secret; missing values fail chart rendering. An existing mesh with enforced mTLS can use `transportSecurity.mode: mesh`. See the [security controls and verification notes](docs/security.md).
 
-Enterprise CA bundles can be mounted from an existing ConfigMap or Secret; the application adds them to public trust for Graph, Entra OBO and signing-key retrieval. Manual builds support Harbor/GHCR, amd64/arm64, optional build CA trust and mirrored base images. CI is optional. Container builds, image publication and live cluster HA verification remain pending.
+Enterprise CA bundles can be mounted from an existing ConfigMap or Secret; the application adds them to public trust for Graph, Entra OBO and signing-key retrieval. Manual builds support Harbor/GHCR, amd64/arm64, optional build CA trust and mirrored base images. CI is optional. Local container builds have been verified; image publication and live cluster HA verification remain pending.
 
 ## Read the specification
 
@@ -60,6 +60,6 @@ Document creation and rendering run in the terminal. The Graph MCP remains a sma
 
 ## Hardened runtime and release gate
 
-The Dockerfile uses DHI Python 3.12 on Debian 13, with separate development and runtime stages. The [manual release gate](scripts/release_image.py) builds one platform, scans the final image with a freshly downloaded Trivy database, and permits publication only with zero reported vulnerabilities at every severity, including unfixed findings. It checks OS/Python scan coverage and records scan, database and image evidence. See [build and release instructions](docs/kubernetes.md). No CI service is required.
+The Dockerfile uses DHI Python 3.14 on Debian 13, with separate development and runtime stages. The [manual release gate](scripts/release_image.py) builds one platform, scans the final image with a freshly downloaded Trivy database, and permits publication only with zero findings outside the reviewed, expiring DHI OS baseline. All Python findings block release; `--strict` restores the zero-unfiltered-findings requirement. It checks OS/Python scan coverage and records scan, database and image evidence. See [build and release instructions](docs/kubernetes.md). No CI service is required.
 
-The DHI image build is not yet verified here: registry metadata requests timed out. No zero-CVE result or DHI image publication is claimed.
+The local amd64 Python 3.14.7 build and restricted runtime smoke passed on 2026-09-10 using runtime digest `sha256:ee0154c1c675e1f51f361c239061128719c06cc7130c6fae0a8362b0ba777267`. Docker Scout reported zero vulnerabilities with full build provenance and SBOM. Trivy 0.74.0 reported 47 unfiltered OS-package findings and no Python-package findings; with the DHI VEX repository it retained 14 findings and suppressed 33. The strict mode remains blocked; the active Trivy-only policy accepts the exact known OS baseline. No image has been published. See [validation evidence](docs/acceptance.md).

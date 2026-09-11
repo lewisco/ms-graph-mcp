@@ -243,7 +243,7 @@ Outlook attachment limits remain separate: upload sessions support 3–150 MB, s
 
 ## 7. Reliability and deployment
 
-Proposed implementation stack: Python 3.12, an official MCP Python SDK Streamable HTTP server in an ASGI application, an async HTTP client for Graph, and MSAL for token acquisition/cache. Pin actual package versions after the compatibility gates; this document does not invent dependency versions. Keep full Graph SDK code generation optional because the interface deliberately preserves raw Graph paths/bodies.
+Proposed implementation stack: Python 3.14, an official MCP Python SDK Streamable HTTP server in an ASGI application, an async HTTP client for Graph, and MSAL for token acquisition/cache. Pin actual package versions after the compatibility gates; this document does not invent dependency versions. Keep full Graph SDK code generation optional because the interface deliberately preserves raw Graph paths/bodies.
 
 Use stateless MCP request handling. The implemented authentication/profile slice uses independent, bounded per-replica OBO caches; a cache miss reacquires the token, so this slice needs no shared token store or sticky sessions. Future continuations, jobs, and artifact metadata require shared durable state or self-contained authenticated handles. A development-only pod-local artifact store must report restart loss explicitly; sticky routing alone is not a durability strategy. The [deployment guide](kubernetes.md) describes the implemented two-replica default, scheduling, disruption controls, and enterprise CA support.
 

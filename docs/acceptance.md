@@ -45,11 +45,23 @@ Sources are linked beside the relevant claims in [architecture](architecture.md)
 
 ### DHI runtime and release gate — 2026-09-10
 
-The Dockerfile now pairs DHI Python 3.12 Debian 13 development/runtime images. Helm chart 0.1.1 uses UID/GID/fsGroup 65532 and absolute virtual-environment Python commands. The manual release command scans an immutable archive of the final runtime with freshly downloaded Trivy DB metadata, all severities and both OS/library package coverage. It blocks release on any reported or suppressed vulnerability, missing coverage, a stale DB, runtime smoke failure or scanner errors.
+The initial Dockerfile paired DHI Python 3.12 Debian 13 development/runtime images; the validated upgrade below moves both stages to 3.14. Helm chart 0.1.1 uses UID/GID/fsGroup 65532 and absolute virtual-environment Python commands. The manual release command scans an immutable archive of the final runtime with freshly downloaded Trivy DB metadata, all severities and both OS/library package coverage. It blocks release on any reported or suppressed vulnerability, missing coverage, a stale DB, runtime smoke failure or scanner errors.
 
 Validation: the full suite passed **141 tests** before the final chart group-alignment change and additional smoke-failure test; the final focused release/chart suite passed **43 tests**. Ruff and Helm lint passed, and chart 0.1.1 was packaged. Release tests use controlled subprocess responses to verify that publishing cannot occur after a failed gate.
 
-The attempted local arm64 DHI build timed out fetching registry metadata, before build steps ran. Trivy is not installed on this build host. A real final-image scan, zero-CVE result, runtime smoke in DHI and DHI image publication are therefore **pending**. These checks must succeed on the release machine; local unit tests do not substitute for them. See [release instructions](kubernetes.md).
+The initial arm64 build attempt timed out fetching registry metadata. The subsequent amd64 validation below supersedes that local build/scan limitation. Arm64 validation and image publication remain pending.
+
+### Local DHI upgrade and scanner reconciliation — 2026-09-10
+
+- Migrated the service and lockfile to Python 3.14; dependency package versions stayed unchanged. Native Python 3.14.2 passed **150 tests**; Ruff lint and formatting passed. The upstream Starlette/AnyIO deprecation warning remains.
+- Built the complete amd64 app on DHI Python 3.14.7, with `--provenance=mode=max --sbom=true`. Runtime base: `sha256:ee0154c1c675e1f51f361c239061128719c06cc7130c6fae0a8362b0ba777267`. Builder: `sha256:db022e3dead75d1e4d262eaad6b7465bc320687a927015fd98488b2ea9c7e65c`.
+- The container imported the application and dependencies and verified public CA availability with a read-only filesystem, UID/GID 65532, no network, no capabilities and no-new-privileges.
+- Docker Scout 1.24.0 reported **0 vulnerabilities** on the complete attested app. The equivalent Python 3.12 build retained four Python findings (three Medium, one Low), which motivated the upgrade.
+- Trivy 0.74.0 reported **47 unfiltered findings** (12 High, 20 Medium, 14 Low, 1 Unknown), all OS packages; no Python dependency findings. The DHI repository VEX comparison retained **14** (4 High, 9 Medium, 1 Unknown) and suppressed 33. The database was updated at 2026-09-10 19:09 UTC and downloaded at 23:40 UTC. Both scans used the same immutable local archive, with its configuration digest verified against the Docker image identity.
+- Docker's attested VEX and Trivy's repository VEX do not produce equivalent results. Repository package documents lag some aggregate statements, and three glibc CVEs have conflicting statuses. No manual suppression or policy relaxation was applied to the release gate; it remains **blocked**.
+- Local evidence is retained under `dist/mcp-vex-reconciliation/`: `python314-build.json`, `python314-image.json`, `python314-summary.json`, `python314-raw.json`, `python314-vex.json`, `python314-scout.md`, and `python314-tests.log`. These generated files are ignored by Git. No image was published or deployed.
+
+For custom images, Docker documents full provenance and SBOM as prerequisites for automatic base-image VEX application in Scout: [DHI scanning instructions](https://docs.docker.com/dhi/how-to/scan/). This vendor assessment does not establish zero unfiltered Trivy findings.
 
 Complete these narrow slices before expanding to the complete service catalog. They are implementation sequencing, not permission to drop any agreed service.
 
@@ -172,3 +184,11 @@ For each implemented operation, record one of: passed, failed with defect, unava
 The system is ready for internal use when the three gates and core agreed workflows pass, remaining API limitations are documented, and temporary-file/token isolation is verified. Live mutation fixtures must use designated test resources and recipients; do not send test mail/messages or modify production documents merely to validate a documentation change.
 
 For the current scaffold stage, local completion means the implemented authentication/profile slice passes its tests, setup instructions are available, and untested integration assumptions remain marked. It does not complete G1, G2, G3, or the overall service acceptance matrix.
+
+## Trivy-only risk acceptance — policy update
+
+The user authorized proceeding with the known findings. The default release gate now uses `security/dhi-os-baseline.json`: 47 exact OS-package findings on the pinned amd64 DHI Python 3.14 runtime are accepted for 30 days from baseline creation. All other findings, including every Python dependency finding, still block release. Scanner errors, stale databases, unexpected suppressions, platform/digest mismatches and expired acceptance also block release. `--strict` preserves the old policy.
+
+Earlier blocked results remain valid historical evidence under the previous criterion. This change accepts the unresolved risk; it does not establish a fix or vendor non-applicability. Docker Scout is not required. See [active policy](release-vulnerability-policy.md).
+
+Validation: **165 tests passed**, Ruff lint/format and whitespace checks passed. A fresh Trivy database download and rescan of the existing immutable Python 3.14 archive produced **47 raw findings, 47 accepted OS findings, zero suppressed findings**, passing the new policy. This was an archive rescan, not a new build or publication. Evidence: `dist/trivy-accepted-baseline/verification.json` and `scan.json`. The full build/publish control flow is covered by regression tests, including accepted baseline, new findings and missing provenance cases.
