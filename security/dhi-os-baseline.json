@@ -481,6 +481,17 @@
         "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
         "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
       }
+    },
+    {
+      "VulnerabilityID": "CVE-2026-89092",
+      "PkgName": "libc6",
+      "InstalledVersion": "2.41-12+deb13u3+dhi2",
+      "Severity": "UNKNOWN",
+      "Layer": {
+        "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
+        "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
+      },
+      "acceptance_reason": "Explicitly accepted 2026-09-11: the unfixed nscd vulnerability requires nscd to be enabled and running; this Uvicorn/Python runtime image does not include an nscd process."
     }
   ],
   "source_scan_sha256": "6993494bc8b9c4b28aabdc29e86c283e15d538abf3a8e3e9ecbb68eca467849e",

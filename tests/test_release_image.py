@@ -244,8 +244,9 @@ def test_publish_only_after_verified_scan(tmp_path, monkeypatch, failure):
     assert len(pushes) == (1 if success else 0)
     assert evidence["status"] == ("published" if success else "blocked")
     if success:
-        assert evidence["vulnerabilities"] == (47 if failure == "accepted" else 0)
-        assert evidence["accepted_os_findings"] == (47 if failure == "accepted" else 0)
+        expected_findings = len(baseline["findings"]) if failure == "accepted" else 0
+        assert evidence["vulnerabilities"] == expected_findings
+        assert evidence["accepted_os_findings"] == expected_findings
         assert evidence["database"]["Version"] == 2
         assert evidence["image_id"] == IMAGE_ID
         assert evidence["image_config_id"] == IMAGE_ID
