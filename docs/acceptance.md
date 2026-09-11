@@ -192,3 +192,13 @@ The user authorized proceeding with the known findings. The default release gate
 Earlier blocked results remain valid historical evidence under the previous criterion. This change accepts the unresolved risk; it does not establish a fix or vendor non-applicability. Docker Scout is not required. See [active policy](release-vulnerability-policy.md).
 
 Validation: **165 tests passed**, Ruff lint/format and whitespace checks passed. A fresh Trivy database download and rescan of the existing immutable Python 3.14 archive produced **47 raw findings, 47 accepted OS findings, zero suppressed findings**, passing the new policy. This was an archive rescan, not a new build or publication. Evidence: `dist/trivy-accepted-baseline/verification.json` and `scan.json`. The full build/publish control flow is covered by regression tests, including accepted baseline, new findings and missing provenance cases.
+
+## Expanded Microsoft 365 tool release — 0.2.0
+
+The user verified the live WebUI/LiteLLM profile connection and requested the broader tools. All eight designed tool names are now exposed, backed by a method/path catalog for the agreed service families, owner-bound pagination and native drive transfer descriptors/status/cancellation. Service availability remains `supported_unverified` until the user's actual Graph request succeeds. Shared staging, non-drive binary transfers, large transcript/JSON delivery, document rendering and full live workflow acceptance remain pending.
+
+Validation: **234 tests passed**, Ruff lint/format and Helm lint passed. Tests use the real MCP HTTP layer with signed fixture JWTs and mocked Graph/storage calls. A final local amd64 DHI build, restricted runtime smoke and fresh Trivy release scan passed with **47 raw OS findings, all 47 accepted, zero unaccepted findings**. No image was pushed and no Microsoft data was changed. Evidence: `dist/tools-0.2.0-final/release.json` and `scan.json`; local image `ms-graph-mcp:tools-0.2.0`.
+
+The initial scan caught Debian renumbering the existing liblzma issue from `TEMP-0000000-639065` to `TEMP-1147318-639065`. The GHSA (`GHSA-5qpq-xqfv-j9pg`), package/version, severity, title and image layer matched exactly. The baseline records the new identifier and prior identifier without changing its expiry or accepting a different issue.
+
+See [work-side rollout](rollout-0.2.0.md). Unlike the chart-label fix, this release requires a new image digest, appropriate downstream delegated consent and refreshed tool discovery.

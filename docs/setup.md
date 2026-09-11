@@ -1,6 +1,6 @@
-# Authentication scaffold setup
+# Microsoft 365 MCP setup
 
-Status: local scaffold implemented; real Entra → Open WebUI → LiteLLM → Graph authorization remains unverified. The only Graph operation is `GET /v1.0/me`. This is gate G1's starting point, not the complete Microsoft 365 gateway.
+Status: the user has verified the live WebUI → LiteLLM → MCP connection. The expanded tools now require a new server image and delegated consent for each intended service; local tests mock Microsoft calls.
 
 If your administrator has already configured the connection, start with the [user guide](usage.md). For setting names, defaults and limits, use the [configuration reference](configuration.md).
 
@@ -19,7 +19,7 @@ Grant the MCP API's delegated Graph `User.Read` consent and the WebUI tools clie
 
 Register the exact callback used by your WebUI MCP connection; it is distinct from WebUI's login callback and depends on its externally visible URL. Do not guess it or reuse a login callback merely because both use Entra. Put the tools client's UUID into `GRAPH_MCP_ALLOWED_CLIENT_IDS`.
 
-Only `User.Read` is needed for this slice. Broader agreed service permissions are added with their implementations; see [service coverage](service-coverage.md).
+`User.Read` covers the profile check only. Configure the delegated permissions for the services being enabled using [service coverage](service-coverage.md) and the deployed `graph_describe` catalog. Core examples include Mail.ReadWrite/Mail.Send, Calendars.ReadWrite, Contacts.ReadWrite, Files.ReadWrite.All, Sites.ReadWrite.All and Tasks.ReadWrite. Shared mail/calendar, Teams and optional meeting artifacts/insights require their corresponding scopes and user rights. Grant downstream consent on the MCP app before reconnecting; the existing OBO exchange uses Graph `.default`. Do not add application permissions. Optional consent failures must be resolved without silently dropping unrelated core access.
 
 ## 2. Resource and token mapping
 
@@ -128,6 +128,14 @@ Implemented locally:
 - Graph errors remain tool errors. Graph 401 invalidates the cached downstream token and asks for one retry/reconnection. No transparent Graph claims challenge recovery is implemented yet.
 - Graph 429 returns the numeric `Retry-After` value as `retry_after_seconds` when supplied. The server does not retry; the caller must wait. General retry orchestration is pending.
 
-The 64 KiB request/profile guards protect this tiny profile-only API. They are **not** the future document-size limit or generic pagination design. There are no file transfer routes yet. Error bodies avoid raw Microsoft response text; ordinary logs should stay at INFO and proxy logs must exclude credentials and bodies.
+MCP request bodies remain limited to 64 KiB; generic Graph responses have a 2 MB ceiling and the backward-compatible profile call keeps its 64 KiB guard. Native drive uploads/downloads transfer bytes directly between the terminal and Microsoft storage, up to the 250 MB target. No server-staged artifact byte route is exposed. Error bodies avoid raw Microsoft response text; ordinary logs should stay at INFO and proxy logs must exclude credentials and bodies.
 
 Real WebUI/LiteLLM login, refresh, consent, Conditional Access, metadata forwarding, gateway-header stripping, container deployment, and Graph access remain pending until run against your tenant. No registration, message, file, or cluster was modified by the local tests.
+
+## Roll out expanded tools
+
+Build and publish a new image from this source using the Trivy release script. Update the deployment to its immutable digest and reconcile Flux. Refresh LiteLLM/WebUI tool discovery (reconnect the Microsoft tools connection if needed). `graph_capabilities` must report stage `microsoft365` and all eight tool names must appear in `tools/list`.
+
+First validate read-only mail/calendar/file discovery for a designated user. Validate writes only against designated test resources with user authorization. Optional Copilot access remains subject to licensing/API eligibility. Server exposure alone does not prove consent or service availability.
+
+For native transfer status/cancellation, allow MCP egress to the Microsoft storage hosts returned by Graph. The terminal also needs egress to those URLs. Enterprise CA trust applies to these server-side requests. Handles work across replicas with the same client secret; credential rotation invalidates them.

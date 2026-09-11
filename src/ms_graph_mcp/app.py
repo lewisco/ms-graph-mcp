@@ -3,7 +3,7 @@
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Literal
+from typing import Literal, get_args
 
 import httpx
 from mcp.server import MCPServer
@@ -17,8 +17,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from ms_graph_mcp.auth import DelegatedAccessToken, EntraVerifier
+from ms_graph_mcp.catalog import OPERATIONS, describe
 from ms_graph_mcp.config import Settings
 from ms_graph_mcp.errors import AuthFailureMiddleware
+from ms_graph_mcp.gateway import Gateway
 from ms_graph_mcp.graph import DEFAULT_FIELDS, GraphClient, GraphFailure, ProfileField
 from ms_graph_mcp.obo import OboClient
 from ms_graph_mcp.request_security import RequestSecurityMiddleware
@@ -43,23 +45,27 @@ def create_app(
         limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
     )
     graph = GraphClient(http, obo)
+    gateway = Gateway(graph, settings)
 
     @asynccontextmanager
     async def lifespan(server: MCPServer) -> AsyncIterator[None]:
         try:
             yield None
         finally:
+            await gateway.aclose()
             await http.aclose()
             await verifier.aclose()
             await obo.aclose()
 
     mcp = MCPServer(
         "ms-graph-mcp",
-        version="0.1.0",
+        version="0.2.0",
         instructions=(
-            "This initial server supports only reading the signed-in user's Graph profile. "
-            "Use graph_capabilities for implemented coverage. Other Microsoft 365 operations "
-            "and file/document tools are not implemented yet."
+            "Delegated Microsoft 365 operations: discover services with graph_capabilities and "
+            "routes with graph_describe. Use graph_read for reads, graph_write for mutations, "
+            "graph_continue for page handles, and transfer tools for native drive files. "
+            "Access depends on user rights and Graph consent. Do not repeat uncertain writes. "
+            "Tenant administration, beta, batch, and server-staged artifacts are not exposed."
         ),
         token_verifier=verifier,
         auth=AuthSettings(
@@ -72,60 +78,189 @@ def create_app(
     )
     readonly = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
 
-    @mcp.tool(annotations=readonly)
-    def graph_capabilities() -> dict:
-        """List implemented operations; does not claim access to unimplemented services."""
-        return {"implemented": [{"method": "GET", "path": "/me"}], "stage": "authentication"}
+    write = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False)
+
+    def tool_result(value, error=False):
+        return CallToolResult(
+            isError=error,
+            content=[TextContent(type="text", text=json.dumps(value, separators=(",", ":")))],
+        )
+
+    async def execute(operation):
+        identity = get_access_token()
+        if not isinstance(identity, DelegatedAccessToken):
+            return tool_result(
+                {
+                    "error": {
+                        "code": "authorization_required",
+                        "message": "Microsoft authorization required.",
+                    }
+                },
+                True,
+            )
+        try:
+            return tool_result(await operation(identity))
+        except GraphFailure as exc:
+            return tool_result(
+                {
+                    "status": exc.status,
+                    "error": {"code": exc.code, "message": str(exc)},
+                    "request_id": exc.request_id,
+                    "retry_after_seconds": exc.retry_after_seconds,
+                },
+                True,
+            )
+        except (ValueError, KeyError, TypeError) as exc:
+            return tool_result(
+                {
+                    "error": {
+                        "code": "invalid_operation",
+                        "message": str(exc)
+                        if isinstance(exc, ValueError)
+                        else "Invalid Graph response or operation input.",
+                    }
+                },
+                True,
+            )
 
     @mcp.tool(annotations=readonly)
-    def graph_describe(path: Literal["/me"] = "/me") -> dict:
-        """Describe the first supported Graph operation and its delegated permission."""
+    def graph_capabilities() -> dict:
+        """Discover implemented service families and limits; access requires delegated consent."""
         return {
-            "method": "GET",
-            "path": path,
-            "delegated_permission": "User.Read",
-            "default_fields": DEFAULT_FIELDS,
+            "stage": "microsoft365",
+            "api_version": "v1.0",
+            "services": [
+                {
+                    "name": service,
+                    "operations": sum(o.service == service for o in OPERATIONS),
+                    "availability": "supported_unverified",
+                }
+                for service in sorted({o.service for o in OPERATIONS})
+            ],
+            "operation_count": len(OPERATIONS),
+            "discovery": "graph_describe(service=...) returns paged routes",
+            "transfers": {
+                "drive_download": True,
+                "drive_upload_session": True,
+                "max_bytes": 250000000,
+                "server_staged_artifacts": False,
+                "native_handle_ttl_seconds": 3600,
+            },
+            "limits": {
+                "inline_response_bytes": 2000000,
+                "beta": False,
+                "batch": False,
+                "tenant_administration": False,
+                "word_powerpoint_editing": "Use terminal tools after download.",
+            },
         }
 
     @mcp.tool(annotations=readonly)
+    def graph_describe(
+        service: str | None = None,
+        query: str | None = None,
+        path: str | None = None,
+        method: str | None = None,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> dict:
+        """Search supported Graph routes, method classification and permission guidance.
+        Page with offset.
+        """
+        if offset < 0 or not 1 <= limit <= 50:
+            raise ValueError("offset must be nonnegative and limit must be between 1 and 50")
+        return describe(service, query, path, method, offset, limit)
+
+    @mcp.tool(annotations=readonly)
     async def graph_read(
-        path: Literal["/me"] = "/me",
-        method: Literal["GET"] = "GET",
-        select: list[ProfileField] | None = None,
+        path: str = "/me",
+        method: Literal["GET", "POST"] = "GET",
+        select: list[str] | None = None,
+        query: dict[str, str] | None = None,
+        body: dict | None = None,
+        headers: dict[str, str] | None = None,
     ) -> CallToolResult:
-        """Read selected profile fields from Graph /me as the connected user."""
-        identity = get_access_token()
-        if not isinstance(identity, DelegatedAccessToken):
-            return CallToolResult(
-                isError=True,
-                content=[TextContent(type="text", text="Microsoft authorization required.")],
-            )
-        fields = list(dict.fromkeys(select or DEFAULT_FIELDS))
-        try:
-            result = await graph.me(identity, fields)
-        except GraphFailure as exc:
-            return CallToolResult(
-                isError=True,
-                content=[
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {
-                                "status": exc.status,
-                                "error": {"code": exc.code, "message": str(exc)},
-                                "request_id": exc.request_id,
-                                "retry_after_seconds": exc.retry_after_seconds,
-                            },
-                            separators=(",", ":"),
-                        ),
+        """Read Graph resources. POST is allowed only for cataloged
+        searches/availability reads. Use Graph query keys such as
+        $select/$filter/$top; follow returned handles with graph_continue.
+        """
+
+        async def operation(identity):
+            if path == "/me" and method == "GET" and not query and not body and not headers:
+                fields = list(dict.fromkeys(select or DEFAULT_FIELDS))
+                if not all(field in get_args(ProfileField) for field in fields):
+                    raise ValueError(
+                        "Unsupported profile field. Use query.$select for broader Graph queries."
                     )
-                ],
+                return await graph.me(identity, fields)
+            options = dict(query or {})
+            if select:
+                if "$select" in options:
+                    raise ValueError("Specify select or query.$select, not both.")
+                options["$select"] = ",".join(select)
+            return await gateway.request(identity, method, path, options, body, headers)
+
+        return await execute(operation)
+
+    @mcp.tool(annotations=write)
+    async def graph_write(
+        path: str,
+        method: Literal["POST", "PATCH", "PUT", "DELETE"],
+        body: dict | None = None,
+        query: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> CallToolResult:
+        """Execute a cataloged Microsoft 365 mutation, including sends/deletes/sharing.
+        Supply explicit Graph JSON; preserve eTags through If-Match. Never blindly
+        retry an uncertain write.
+        """
+        return await execute(
+            lambda identity: gateway.request(
+                identity, method, path, query, body, headers, read_only=False
             )
-        # One compact JSON text block works for clients that discard structuredContent and
-        # avoids injecting the same profile twice when a client forwards both representations.
-        return CallToolResult(
-            content=[TextContent(type="text", text=json.dumps(result, separators=(",", ":")))],
         )
+
+    @mcp.tool(annotations=readonly)
+    async def graph_continue(continuation: str) -> CallToolResult:
+        """Read the next page from an owner-bound handle; never replays the original mutation."""
+        return await execute(lambda identity: gateway.continue_page(identity, continuation))
+
+    @mcp.tool(annotations=write)
+    async def graph_prepare_transfer(
+        direction: Literal["download", "upload"],
+        path: str,
+        filename: str | None = None,
+        size: int | None = None,
+        etag: str | None = None,
+    ) -> CallToolResult:
+        """Prepare a native drive transfer up to 250 MB. Download uses an item path.
+        Upload with filename uses a parent path and creates a copy; omitting filename
+        replaces an item and requires etag. Keep returned URLs private; the terminal
+        transfers bytes without Graph authorization.
+        """
+        return await execute(
+            lambda identity: gateway.prepare(identity, direction, path, filename, size, etag)
+        )
+
+    @mcp.tool(annotations=readonly)
+    async def graph_transfer_status(
+        transfer: str, completed_item_path: str | None = None
+    ) -> CallToolResult:
+        """Inspect a transfer; provide the completed drive item path to check upload
+        size and destination drive. This does not prove byte-for-byte integrity.
+        """
+        return await execute(
+            lambda identity: gateway.transfer_status(identity, transfer, completed_item_path)
+        )
+
+    @mcp.tool(annotations=write)
+    async def graph_transfer_manage(
+        transfer: str, action: Literal["cancel"] = "cancel"
+    ) -> CallToolResult:
+        """Cancel a native upload session at Microsoft. Download URL
+        revocation/retention extension is not supported.
+        """
+        return await execute(lambda identity: gateway.transfer_manage(identity, transfer, action))
 
     @mcp.custom_route("/healthz", methods=["GET"])
     async def health(request: Request) -> JSONResponse:

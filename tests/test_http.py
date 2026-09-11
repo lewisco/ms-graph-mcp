@@ -112,6 +112,11 @@ def test_initialize_discover_and_read(server, token, version):
         "graph_read",
         "graph_describe",
         "graph_capabilities",
+        "graph_write",
+        "graph_continue",
+        "graph_prepare_transfer",
+        "graph_transfer_status",
+        "graph_transfer_manage",
     }
     result, payload = read_payload(call_profile(client, incoming))
     assert not result.get("isError")
@@ -182,7 +187,7 @@ def test_obo_configuration_failure_is_http_503(server, token):
     "arguments",
     [
         {"path": "https://evil.example/me"},
-        {"path": "/users"},
+        {"path": "/applications"},
         {"method": "POST"},
         {"select": ["id&$expand=manager"]},
     ],
@@ -276,3 +281,69 @@ def test_throttle_delay_reaches_model(server, token):
     assert result["isError"]
     assert payload["retry_after_seconds"] == 37
     assert len(requests) == 1
+
+
+def test_expanded_tools_discover_and_execute_via_mcp(server, token):
+    client, requests, upstream, *_ = server
+    incoming = token()
+    tools = rpc(client, incoming, "tools/list").json()["result"]["tools"]
+    annotations = {t["name"]: t["annotations"] for t in tools}
+    assert annotations["graph_read"]["readOnlyHint"] is True
+    assert annotations["graph_write"]["readOnlyHint"] is False
+    _, capabilities = read_payload(
+        rpc(client, incoming, "tools/call", {"name": "graph_capabilities"})
+    )
+    assert {s["name"] for s in capabilities["services"]} >= {
+        "mail",
+        "calendar",
+        "files",
+        "teams",
+        "todo",
+        "planner",
+        "excel",
+        "sites",
+        "meetings",
+        "copilot",
+        "directory",
+    }
+    assert capabilities["stage"] != "authentication"
+    _, catalog = read_payload(
+        rpc(
+            client,
+            incoming,
+            "tools/call",
+            {"name": "graph_describe", "arguments": {"path": "/me/sendMail"}},
+        )
+    )
+    assert catalog["operations"][0]["method"] == "POST"
+    upstream[0] = httpx.Response(200, json={"value": [{"id": "message", "subject": "Hello"}]})
+    result, payload = read_payload(
+        call_profile(client, incoming, {"path": "/me/messages", "query": {"$top": "5"}})
+    )
+    assert not result.get("isError") and payload["data"]["value"][0]["subject"] == "Hello"
+    upstream[0] = httpx.Response(202)
+    result, payload = read_payload(
+        rpc(
+            client,
+            incoming,
+            "tools/call",
+            {
+                "name": "graph_write",
+                "arguments": {
+                    "path": "/me/sendMail",
+                    "method": "POST",
+                    "body": {"message": {"subject": "fixture"}},
+                },
+            },
+        )
+    )
+    assert not result.get("isError") and payload["outcome"] == "accepted"
+    assert requests[-1].method == "POST"
+
+
+def test_mcp_read_tool_cannot_send_mail(server, token):
+    client, requests, *_ = server
+    result, _ = read_payload(
+        call_profile(client, token(), {"path": "/me/sendMail", "method": "POST", "body": {}})
+    )
+    assert result["isError"] and not requests

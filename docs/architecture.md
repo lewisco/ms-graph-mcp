@@ -137,7 +137,7 @@ LiteLLM 1.100.0 also contains `token_exchange_profile: entra_obo`. A token issue
 
 ### 4.1 Small tool surface, inspectable Graph operations
 
-Proposed tool contracts below are design names, not implemented APIs. Keep initial tool descriptions short; load endpoint detail on demand.
+All eight tool names below are now exposed. The implementation covers cataloged Graph operations, pagination and native drive transfers; shared artifact staging, retention extension and complete workflow acceptance remain pending. See [current tool behavior](usage.md). Keep initial tool descriptions short; load endpoint detail on demand.
 
 | Tool | Purpose and principal inputs |
 | --- | --- |

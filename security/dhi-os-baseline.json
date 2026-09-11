@@ -239,14 +239,18 @@
       }
     },
     {
-      "VulnerabilityID": "TEMP-0000000-639065",
+      "VulnerabilityID": "TEMP-1147318-639065",
       "PkgName": "liblzma5",
       "InstalledVersion": "5.8.1-1+dhi1",
       "Severity": "UNKNOWN",
       "Layer": {
         "Digest": "sha256:3e31118c3d79330789266a7cf820289f0361cc566e4c455cf3433bbcdd1234fb",
         "DiffID": "sha256:c70f88f050113bfce58167ca06ff8c02c932d9087447c2eadb3bd6b9b85b5d32"
-      }
+      },
+      "previous_identifiers": [
+        "TEMP-0000000-639065"
+      ],
+      "identifier_update_reason": "Debian TEMP identifier renumbered; GHSA-5qpq-xqfv-j9pg, package, version, severity, title and layer match the accepted finding. Acceptance scope and expiry unchanged."
     },
     {
       "VulnerabilityID": "CVE-2025-69720",

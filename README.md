@@ -2,23 +2,24 @@
 
 An internal Streamable HTTP MCP server designed for Open WebUI and LiteLLM, with delegated Microsoft Graph access and planned file transfers to an Open Terminal workspace.
 
-**Status: authentication scaffold implemented and locally tested. Live Entra/LiteLLM/WebUI integration is pending. No app registration or cluster deployment has been created.**
+**Status: delegated Microsoft 365 tools implemented; the user has verified the WebUI → LiteLLM → MCP connection. Expanded service operations require work-side consent and live validation.**
 
-Implemented: tenant-specific Entra JWT validation, delegated OBO through MSAL, bounded per-assertion token caching, OAuth resource metadata, health endpoints, and `graph_read` for selected `/me` profile fields. `graph_capabilities` and `graph_describe` expose this initial coverage.
+Eight MCP tools expose cataloged reads/writes for mail, calendars, contacts, Teams/chats, meetings, files, SharePoint, tasks, Excel, people and basic directory discovery, plus owner-bound pagination and native drive transfers. Use `graph_capabilities` and `graph_describe` to discover the deployed catalog.
 
-File transfers, other Microsoft 365 operations, full read/write coverage, artifact cleanup, and terminal document rendering remain planned. The agreed 250 MB and visual document workflows are not implemented yet.
+Native drive transfers target 250 MB. Shared staging for large transcripts/JSON, non-drive binary transfers, document editing/rendering and full workflow acceptance remain incomplete. Tenant administration, beta and batch APIs are excluded. See the [tool guide](docs/usage.md) for exact limits.
 
 ## Documentation
 
 - [User guide](docs/usage.md): connect Microsoft, use the available tools, and understand errors.
+- [Version 0.2.0 rollout](docs/rollout-0.2.0.md): rebuild, deploy, consent and refresh tool discovery.
 - [Setup guide](docs/setup.md): configure Entra registrations, the server, LiteLLM, and Open WebUI.
 - [Configuration reference](docs/configuration.md): environment variables, Helm settings, and security limits.
 - [Kubernetes deployment](docs/kubernetes.md): build images, configure certificates and gateway access, and install or upgrade.
 - [Security controls](docs/security.md): authentication protections and deployment verification.
 
-## Run the first slice
+## Run the server
 
-Follow the [Entra, server, LiteLLM, and WebUI setup guide](docs/setup.md). Start with delegated `User.Read` and prove the connection before adding more permissions.
+Follow the [Entra, server, LiteLLM, and WebUI setup guide](docs/setup.md). Verify `/me`, then configure delegated consent for the intended services.
 
 ```sh
 uv sync --locked --no-editable

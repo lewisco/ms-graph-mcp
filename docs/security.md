@@ -1,6 +1,6 @@
 # Security controls for the authentication/profile slice
 
-The September 2026 review identified signing-key refresh contention, global OBO exchange contention, and deployment defaults that relied on external gateway isolation. The implemented controls below address those findings. They apply to the current profile-only server; future file and write operations need their own security validation.
+The September 2026 review identified signing-key refresh contention, global OBO exchange contention, and deployment defaults that relied on external gateway isolation. The implemented controls below address those findings. They remain active for the expanded Microsoft 365 server. The operation and native-transfer protections below supplement them; live workflow validation is still required.
 
 ## Authentication availability
 
@@ -29,3 +29,13 @@ The [active vulnerability release policy](release-vulnerability-policy.md) accep
 Regression tests cover unknown-key bursts, cached-key progress during refresh, failed refresh backoff, expiry and rotation, request cancellation, public-route bypass of authentication work, isolated concurrent OBO exchanges, failed-exchange backoff, and overload rejection. Helm tests verify the default NetworkPolicy, TLS Secret mounts, HTTPS listener arguments/probes, and explicit mesh mode. Existing JWT rejection, user-isolation, Graph destination/redirect, and enterprise CA tests remain in place.
 
 Live Entra/LiteLLM interoperability, certificate issuance/rotation, ingress-controller backend TLS and cluster NetworkPolicy enforcement require deployment verification. No live tenant or cluster changes are made by the local test suite.
+
+## Microsoft 365 operation and transfer boundaries
+
+The catalog binds methods and paths to read/write classification. Only cataloged read-only POST operations such as search and availability are accepted by `graph_read`; arbitrary routes, tenant administration, beta and batch requests are rejected. Graph destinations are fixed, path traversal/double encoding is rejected, selected headers are allowlisted and redirects are not followed. Delegated OBO and user/resource authorization remain mandatory.
+
+Writes are never retried automatically. Connection loss, server errors and unreadable success responses report uncertain outcomes; callers must reconcile the destination. A 202 indicates acceptance, not delivery. Generic responses are bounded at 2 MB without successful truncation, and native transfer capability URLs are excluded from ordinary data.
+
+Encrypted continuation and transfer handles bind tenant, user and client, have a one-hour TTL, and use a domain-separated key derived from the existing client credential and tenant/client identity. Replicas can process the same handle; rotation invalidates it. Every call still requires current MCP authorization. Native storage requests use a separate HTTP client with no Graph bearer, approved Microsoft host suffixes, no redirects and configured CA trust. Download URLs remain provider-issued bearer capabilities and cannot be revoked by this server.
+
+Regression tests cover all service-family routing, write/read separation, URL/header rejection, owner and purpose isolation, expired/tampered handles, pagination across instances, eTag forwarding, copy-default upload sessions, transfer host checks, absence of Graph tokens on storage calls, error sanitization and uncertain writes. These tests mock upstream Microsoft responses; they do not prove permission grants, live upload integrity or complete service workflows.

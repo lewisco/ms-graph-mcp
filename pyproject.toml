@@ -1,9 +1,10 @@
 [project]
 name = "ms-graph-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Delegated Microsoft Graph access over Streamable HTTP MCP"
 requires-python = ">=3.14,<3.15"
 dependencies = [
+  "cryptography==50.0.1",
   "httpx==0.28.1",
   "mcp==2.2.0",
   "msal==1.38.0",

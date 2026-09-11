@@ -1,6 +1,6 @@
 # Service coverage and delegated permissions
 
-Status: scope and permission design, not an applied Entra manifest. All scopes below are **delegated** unless explicitly discussing an excluded application-only API. No service account or application-permission fallback is proposed.
+Status: service scope and permission guidance for the implemented route catalog, not an applied Entra manifest. The executable catalog is `src/ms_graph_mcp/catalog.py`; native drive transfers are implemented, while shared artifact staging and full workflow acceptance remain pending. All scopes below are **delegated** unless explicitly discussing an excluded application-only API. No service account or application-permission fallback is proposed.
 
 The user's Microsoft access and the app's consent both matter. Broadly named delegated scopes do not grant access beyond the signed-in user's resource rights. The exact operation catalog must bind each supported route to Microsoft's current permission table and a fixture. Scope candidates may overlap; remove redundant scopes where the endpoint tables establish that a granted scope is sufficient. [Permission model](https://learn.microsoft.com/en-us/entra/identity-platform/permissions-consent-overview)
 
