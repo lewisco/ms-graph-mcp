@@ -15,7 +15,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "msgraph.labels" -}}
 {{ include "msgraph.selector" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | quote }}
 {{- end -}}
 {{- define "msgraph.image" -}}
 {{- if .Values.image.digest -}}

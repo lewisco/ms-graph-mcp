@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,12 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="Helm CLI required")
 
 
-def render(*overrides, success=True):
+def render(*overrides, success=True, chart=None):
     command = [
         "helm",
         "template",
         "test",
-        str(ROOT / "charts/ms-graph-mcp"),
+        str(chart or ROOT / "charts/ms-graph-mcp"),
         "--namespace",
         "ai",
         "-f",
@@ -31,6 +32,26 @@ def render(*overrides, success=True):
         return result.stderr
     assert result.returncode == 0, result.stderr
     return {item["kind"]: item for item in yaml.safe_load_all(result.stdout) if item}
+
+
+@pytest.mark.parametrize("version", ["0.1.1+200a791802bf", "0.1.2+82a21a1"])
+def test_flux_chart_version_produces_valid_labels(tmp_path, version):
+    chart = tmp_path / "chart"
+    shutil.copytree(ROOT / "charts/ms-graph-mcp", chart)
+    metadata = yaml.safe_load((chart / "Chart.yaml").read_text())
+    metadata["version"] = version
+    (chart / "Chart.yaml").write_text(yaml.safe_dump(metadata))
+    resources = render("metadataIngress.enabled=true", chart=chart)
+    expected = "ms-graph-mcp-" + version.replace("+", "_")
+    for resource in resources.values():
+        labels = resource["metadata"].get("labels", {})
+        if "helm.sh/chart" in labels:
+            assert labels["helm.sh/chart"] == expected
+        for value in labels.values():
+            assert len(value) <= 63
+            assert re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?", value)
+    for kind in ("Service", "Deployment"):
+        assert resources[kind]["metadata"]["labels"]["helm.sh/chart"] == expected
 
 
 @pytest.mark.parametrize("replicas", [2, 3, 5])
