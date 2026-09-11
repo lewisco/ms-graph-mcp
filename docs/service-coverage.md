@@ -26,6 +26,8 @@ The user's Microsoft access and the app's consent both matter. Broadly named del
 | To Do | Lists, tasks, checklist items, linked resources and supported task attachments | `Tasks.ReadWrite` | Respect the actual To Do endpoint model rather than reusing Planner payloads |
 | Excel | Workbook sessions, worksheets, ranges, tables, formulas, charts and supported calculations | `Files.ReadWrite` | Sessions and operations have endpoint-specific requirements |
 | Word/PowerPoint | File operations through drives; document content editing in terminal | File/library scopes above | No invented paragraph/slide-editing Graph endpoints |
+| OneNote | Notebook/section discovery and creation; page HTML creation/read, content patches and page deletion | `Notes.ReadWrite.All` (or `Notes.ReadWrite` for own notebooks) | No multipart resources or copy/move monitors; see [0.3.0 rollout](rollout-0.3.0.md) |
+| Presence | Own/colleague presence, bulk lookup, own preferred/session state and status message | `Presence.Read.All`, `Presence.ReadWrite` | Writes restricted to verified own object ID; no background renewal or location writes |
 | Me/People | `/me`, relevant people, basic coworker lookup | `User.Read`, `People.Read`, `User.ReadBasic.All` | Own-profile edits can add `User.ReadWrite`; broader directory administration is outside scope |
 
 Mail/shared-mail/settings/contact/profile scope meanings are documented in the [Graph permission reference](https://learn.microsoft.com/en-us/graph/permissions-reference). This map groups proposed workflows; it is not a claim that each candidate is needed for every operation.

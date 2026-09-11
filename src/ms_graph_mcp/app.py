@@ -59,7 +59,7 @@ def create_app(
 
     mcp = MCPServer(
         "ms-graph-mcp",
-        version="0.2.0",
+        version="0.3.0",
         instructions=(
             "Delegated Microsoft 365 operations: discover services with graph_capabilities and "
             "routes with graph_describe. Use graph_read for reads, graph_write for mutations, "
@@ -148,6 +148,9 @@ def create_app(
             },
             "limits": {
                 "inline_response_bytes": 2000000,
+                "request_body_bytes": 60000,
+                "onenote_multipart": False,
+                "presence_write": "Signed-in user's object ID only; no automatic renewal.",
                 "beta": False,
                 "batch": False,
                 "tenant_administration": False,
@@ -206,17 +209,19 @@ def create_app(
     async def graph_write(
         path: str,
         method: Literal["POST", "PATCH", "PUT", "DELETE"],
-        body: dict | None = None,
+        body: dict | list[dict] | None = None,
         query: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
+        html: str | None = None,
     ) -> CallToolResult:
         """Execute a cataloged Microsoft 365 mutation, including sends/deletes/sharing.
-        Supply explicit Graph JSON; preserve eTags through If-Match. Never blindly
-        retry an uncertain write.
+        Supply Graph JSON (an array for OneNote content patches), or html for
+        OneNote page creation. Preserve eTags through If-Match. Never blindly
+        retry an uncertain write. Presence writes target your own object ID.
         """
         return await execute(
             lambda identity: gateway.request(
-                identity, method, path, query, body, headers, read_only=False
+                identity, method, path, query, body, headers, read_only=False, html=html
             )
         )
 

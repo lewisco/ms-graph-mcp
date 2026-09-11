@@ -116,6 +116,96 @@ async def test_write_accepted_and_no_token_in_result(gateway, identity):
     assert "graph-token" not in json.dumps(result) and "mcp-token" not in json.dumps(result)
 
 
+@pytest.mark.parametrize("owner", ["/me", "/users/user", "/groups/group", "/sites/site"])
+async def test_onenote_html_and_content_patch(gateway, identity, owner):
+    api, requests, responses = gateway
+    path = owner + "/onenote/sections/section/pages"
+    html = "<html><head><title>Notes</title></head><body><p>Café</p></body></html>"
+    responses[0] = httpx.Response(201, json={"id": "page"})
+    result = await api.request(identity, "POST", path, html=html, read_only=False)
+    assert result["data"]["id"] == "page"
+    assert requests[-1].content == html.encode()
+    assert requests[-1].headers["content-type"] == "text/html; charset=utf-8"
+    content_path = owner + "/onenote/pages/page/content"
+    responses[0] = httpx.Response(200, text=html, headers={"Content-Type": "text/html"})
+    result = await api.request(identity, "GET", content_path, query={"includeIDs": "true"})
+    assert result["data"]["text"] == html
+    assert requests[-1].url.params["includeIDs"] == "true"
+    commands = [{"target": "body", "action": "append", "content": "<p>Next</p>"}]
+    responses[0] = httpx.Response(204)
+    await api.request(identity, "PATCH", content_path, body=commands, read_only=False)
+    assert json.loads(requests[-1].content) == commands
+    assert requests[-1].headers["content-type"] == "application/json"
+
+
+@pytest.mark.parametrize(
+    "method,path,options",
+    [
+        ("POST", "/me/onenote/pages", {"body": {"html": "<p>bad</p>"}}),
+        ("POST", "/me/onenote/pages", {"html": "<p>x</p>", "body": {}}),
+        ("POST", "/me/onenote/pages", {"html": "é" * 30001}),
+        ("POST", "/me/messages", {"html": "<p>bad</p>"}),
+        ("PATCH", "/me/onenote/pages/page/content", {"body": {"action": "append"}}),
+        ("PATCH", "/me/onenote/pages/page/content", {"body": []}),
+        ("PATCH", "/me/onenote/pages/page/content", {"body": ["bad"]}),
+        ("POST", "/me/messages", {"body": [{"subject": "bad"}]}),
+        ("PATCH", "/me/onenote/notebooks/book", {"body": {"displayName": "bad"}}),
+        ("PATCH", "/me/presence", {"body": {"availability": "Busy"}}),
+        ("POST", "/users/other/presence/setUserPreferredPresence", {"body": {}}),
+    ],
+)
+async def test_new_payloads_do_not_allow_unsupported_writes(
+    gateway, identity, method, path, options
+):
+    api, requests, _ = gateway
+    with pytest.raises(ValueError):
+        await api.request(identity, method, path, read_only=False, **options)
+    assert not requests
+
+
+async def test_presence_reads_and_self_write(gateway, identity):
+    api, requests, responses = gateway
+    await api.request(identity, "GET", "/users/colleague/presence")
+    await api.request(
+        identity, "POST", "/communications/getPresencesByUserId", body={"ids": ["colleague"]}
+    )
+    assert json.loads(requests[-1].content) == {"ids": ["colleague"]}
+    responses[0] = httpx.Response(200)
+    await api.request(
+        identity,
+        "POST",
+        "/users/user/presence/setUserPreferredPresence",
+        body={"availability": "Busy", "activity": "Busy", "expirationDuration": "PT1H"},
+        read_only=False,
+    )
+    assert requests[-1].url.path == "/v1.0/users/user/presence/setUserPreferredPresence"
+
+
+@pytest.mark.parametrize("ids", [None, [], [""], [1], ["user"] * 651, "user"])
+async def test_presence_bulk_bounds(gateway, identity, ids):
+    api, requests, _ = gateway
+    with pytest.raises(ValueError):
+        await api.request(
+            identity, "POST", "/communications/getPresencesByUserId", body={"ids": ids}
+        )
+    assert not requests
+
+
+def test_new_discovery_formats_and_read_classification():
+    assert (
+        describe(path="/me/onenote/pages", method="POST")["operations"][0]["body_format"] == "html"
+    )
+    assert (
+        describe(path="/me/onenote/pages/p/content", method="PATCH")["operations"][0]["body_format"]
+        == "json_array"
+    )
+    resolve("POST", "/communications/getPresencesByUserId", True)
+    with pytest.raises(ValueError):
+        resolve("POST", "/communications/getPresencesByUserId", False)
+    with pytest.raises(ValueError):
+        resolve("POST", "/users/user/presence/setStatusMessage", True)
+
+
 async def test_query_and_selected_headers_preserved(gateway, identity):
     api, requests, _ = gateway
     await api.request(

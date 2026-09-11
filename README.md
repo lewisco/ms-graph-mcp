@@ -11,6 +11,9 @@ Native drive transfers target 250 MB. Shared staging for large transcripts/JSON,
 ## Documentation
 
 - [User guide](docs/usage.md): connect Microsoft, use the available tools, and understand errors.
+- [Version 0.3.0 rollout](docs/rollout-0.3.0.md): OneNote, presence and additional delegated permissions.
+- [Open WebUI system prompt](docs/open-webui-system-prompt.md): copy into the custom model with this MCP and Open Terminal.
+- [Request handling review](docs/request-handling-review.md): Work IQ comparison and recommended next improvements.
 - [Version 0.2.0 rollout](docs/rollout-0.2.0.md): rebuild, deploy, consent and refresh tool discovery.
 - [Setup guide](docs/setup.md): configure Entra registrations, the server, LiteLLM, and Open WebUI.
 - [Configuration reference](docs/configuration.md): environment variables, Helm settings, and security limits.

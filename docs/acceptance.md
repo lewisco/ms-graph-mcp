@@ -202,3 +202,9 @@ Validation: **234 tests passed**, Ruff lint/format and Helm lint passed. Tests u
 The initial scan caught Debian renumbering the existing liblzma issue from `TEMP-0000000-639065` to `TEMP-1147318-639065`. The GHSA (`GHSA-5qpq-xqfv-j9pg`), package/version, severity, title and image layer matched exactly. The baseline records the new identifier and prior identifier without changing its expiry or accepting a different issue.
 
 See [work-side rollout](rollout-0.2.0.md). Unlike the chart-label fix, this release requires a new image digest, appropriate downstream delegated consent and refreshed tool discovery.
+
+## 0.3.0 local validation — 2026-09-11
+
+OneNote and presence routes were added with HTML page creation, JSON-array content patches, payload-format discovery and own-user presence-write enforcement. `uv run pytest -q` passed 259 tests, including MCP HTTP payload serialization, HTML reads, invalid-body rejection, bulk presence bounds, read/write classification and owner restrictions. Ruff and lock consistency checks passed. Helm lint passed with `deploy/values.example.yaml`; bare defaults intentionally lack required deployment identity/secret settings.
+
+These tests use mocked Microsoft responses. Live Graph notebook/page operations, presence changes, terminal transfers and model-visible rendering remain pending work-side acceptance. This turn did not build/publish a new image or deploy to the work cluster. The companion prompt checks actual terminal tool/package availability rather than assuming proposed helpers exist.

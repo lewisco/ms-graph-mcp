@@ -1,6 +1,6 @@
 # Microsoft 365 tools
 
-The server exposes eight MCP tools for delegated Microsoft 365 access. Mail, shared mailboxes, calendars, contacts, Outlook settings, Teams/chats, meetings and insights, files, SharePoint, Planner, To Do, Excel, people and basic directory discovery are available through the route catalog. Graph consent, user rights and service eligibility determine which calls succeed.
+The server exposes eight MCP tools for delegated Microsoft 365 access. Mail, shared mailboxes, calendars, contacts, Outlook settings, Teams/chats, meetings and insights, files, SharePoint, Planner, To Do, Excel, OneNote, presence, people and basic directory discovery are available through the route catalog. Graph consent, user rights and service eligibility determine which calls succeed.
 
 ## Discover and use operations
 
@@ -17,7 +17,7 @@ The server exposes eight MCP tools for delegated Microsoft 365 access. Mail, sha
 
 Connect Microsoft in WebUI, then call `graph_capabilities` and `graph_describe(service="mail")`. Availability is reported as `supported_unverified` because exposing an operation does not establish your consent or resource access. The server does not enumerate licenses or grant permissions.
 
-Use Graph-relative paths without `/v1.0` or a hostname. Put query options in `query` and JSON payloads in `body`. Query values are strings. Supported headers are `Prefer`, `ConsistencyLevel`, `If-Match`, `If-None-Match` and `workbook-session-id`; authentication headers cannot be supplied by callers. Unknown routes and writes through `graph_read` are rejected before Graph is called.
+Use Graph-relative paths without `/v1.0` or a hostname. Put query options in `query` and JSON payloads in `body`. OneNote page creation instead takes `html` on `graph_write`; OneNote content PATCH takes an array of command objects in `body`. Discovery reports `body_format`. See [OneNote/presence examples](rollout-0.3.0.md). Query values are strings. Supported headers are `Prefer`, `ConsistencyLevel`, `If-Match`, `If-None-Match` and `workbook-session-id`; authentication headers cannot be supplied by callers. Unknown routes and writes through `graph_read` are rejected before Graph is called.
 
 ### Read examples
 

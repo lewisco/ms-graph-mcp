@@ -10,7 +10,7 @@ from uuid import uuid4
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 
-from ms_graph_mcp.catalog import canonical_path, resolve
+from ms_graph_mcp.catalog import OPERATIONS, canonical_path, resolve
 from ms_graph_mcp.graph import GraphClient, GraphFailure
 from ms_graph_mcp.tls import create_ssl_context
 
@@ -31,6 +31,8 @@ QUERY = {
     "endDateTime",
     "$format",
     "search",
+    "includeIDs",
+    "sectionName",
 }
 MAX_RESPONSE = 2_000_000
 MAX_TRANSFER = 250_000_000
@@ -128,8 +130,37 @@ class Gateway:
         read_only=True,
         transfer=False,
         url=None,
+        html=None,
     ):
         path = resolve(method, path, read_only)
+        operation = next(o for o in OPERATIONS if o.method == method and o.matches(path))
+        if operation.body_format == "html":
+            if not isinstance(html, str) or not html.strip() or body is not None:
+                raise ValueError("OneNote page creation requires html and no JSON body.")
+            if len(html.encode("utf-8")) > 60000:
+                raise ValueError("HTML request exceeds 60000 bytes; multipart is not supported.")
+        elif html is not None:
+            raise ValueError("html is supported only for OneNote page creation.")
+        elif operation.body_format == "json_array":
+            if (
+                not isinstance(body, list)
+                or not body
+                or not all(isinstance(command, dict) for command in body)
+            ):
+                raise ValueError("OneNote content updates require a nonempty array of commands.")
+        elif body is not None and not isinstance(body, dict):
+            raise ValueError("This operation requires a JSON object body.")
+        if operation.service == "presence":
+            if not read_only and path.split("/")[2].lower() != identity.subject.lower():
+                raise ValueError("Presence writes require the signed-in user's object ID.")
+            if path == "/communications/getPresencesByUserId":
+                ids = body.get("ids") if isinstance(body, dict) else None
+                if (
+                    not isinstance(ids, list)
+                    or not 1 <= len(ids) <= 650
+                    or not all(isinstance(user_id, str) and user_id.strip() for user_id in ids)
+                ):
+                    raise ValueError("Provide ids as an array of 1 to 650 nonempty user IDs.")
         if path.endswith("/createUploadSession") and not transfer:
             raise ValueError("Use graph_prepare_transfer to create and track an upload session.")
         headers = headers or {}
@@ -141,6 +172,8 @@ class Gateway:
                 "session headers are allowed."
             )
         query = query or {}
+        if ("includeIDs" in query or "sectionName" in query) and operation.service != "onenote":
+            raise ValueError("includeIDs and sectionName are OneNote-only query parameters.")
         if any(k not in QUERY for k in query):
             raise ValueError(
                 "Unsupported query parameter; use graph_describe and Graph query options."
@@ -159,13 +192,17 @@ class Gateway:
         }
         if path.endswith("/content") or path.endswith("/$value"):
             request_headers["Accept"] = "*/*"
+        payload = {"json": body}
+        if html is not None:
+            request_headers["Content-Type"] = "text/html; charset=utf-8"
+            payload = {"content": html.encode("utf-8")}
         target = self.graph_link(url) if url else ORIGIN + "/v1.0" + path
         try:
             async with self.graph.http.stream(
                 method,
                 target,
                 params=query if not url else None,
-                json=body,
+                **payload,
                 headers=request_headers,
                 follow_redirects=False,
             ) as response:

@@ -1,0 +1,35 @@
+# Request handling review — 2026-09-11
+
+This is a design assessment, not a claim that the proposed mechanisms below are implemented. The 0.3.0 change adds OneNote/presence, payload-format discovery, HTML page creation and JSON-array page updates. Existing pagination, eTags, request IDs and error behavior are retained.
+
+## Microsoft Work IQ comparison
+
+Reviewed the public repository at commit `bcc10b3a10d7e423b879c38178b1212b2c733d2e`. Its current preview connects to a hosted MCP service; this repository publishes client configuration and usage references, not evidence of the hosted service's internal retry/batch implementation. No Microsoft Work IQ installation, tenant consent or live invocation was performed.
+
+The preview documents semantic `ask` alongside precise entity reads/writes, `search_paths`, `get_schema`, actions/functions and `fetch_blob`. Its reference material recommends resolving exact targets before mutations, selecting small field sets, bounded paging, inspecting individual multi-fetch results, and reporting partial results and actual errors. Those are useful patterns for our model instructions. Our custom model performs synthesis over Graph results itself; we do not implement Microsoft's semantic `ask` backend.
+
+The preview README describes a 4 MB base64 blob download ceiling and says `upload_blob` is not released. We should retain native drive transfers through the terminal, keeping file bytes out of model messages. Our 250 MB limit is our implementation limit, not a general Graph upload ceiling.
+
+Sources: [preview README](https://github.com/microsoft/work-iq/blob/bcc10b3a10d7e423b879c38178b1212b2c733d2e/plugins/workiq-preview/README.md), [fetch guidance](https://github.com/microsoft/work-iq/blob/bcc10b3a10d7e423b879c38178b1212b2c733d2e/plugins/workiq-preview/skills/workiq-preview/references/fetch-work-iq.md), [schema discovery](https://github.com/microsoft/work-iq/blob/bcc10b3a10d7e423b879c38178b1212b2c733d2e/plugins/workiq-preview/skills/workiq-preview/references/get-schema-work-iq.md), [troubleshooting](https://github.com/microsoft/work-iq/blob/bcc10b3a10d7e423b879c38178b1212b2c733d2e/plugins/workiq-preview/skills/workiq-preview/references/troubleshooting.md).
+
+## Decisions
+
+| Mechanism | Suitability and proposed behavior | Current implementation |
+| --- | --- | --- |
+| Read retries | High priority. Retry only catalog-classified reads, including safe POST search/availability/presence reads. At most two retries within a short total deadline. Honor Retry-After; otherwise use exponential backoff with jitter. If the server delay exceeds the budget, return the delay. Retry only transient transport failures, 429 and selected 502/503/504 responses. | No server retries. Errors and numeric Retry-After are returned. The system prompt permits bounded caller retries. |
+| Write retries | Keep disabled by default. A timeout, lost response or 5xx can occur after a mutation. Reconcile by target ID/state before considering a retry; never replay a whole workflow. A future retry policy for a definitive throttling rejection needs endpoint-specific validation. | No automatic retry; uncertain outcomes are reported. |
+| Pagination | Keep explicit continuation handles. A future bounded collector can accept max_pages, max_items, max_bytes and deadline; return accumulated results plus a continuation when a bound is reached. Never imply an incomplete collection is exhaustive. | One page per tool call; encrypted owner-bound continuation/delta handles expire after one hour. Microsoft Search uses its own from/size paging. |
+| Read multi-fetch/batching | Useful next step after retry/schema work. Prefer a small catalog-validated read-only wrapper with bounded concurrency. Return one result/error/request ID per input, preserving successes. Validate every subrequest; outer HTTP 200 is not aggregate success. Enforce a total response budget and retry only failed transient reads. | No multi-fetch or Graph $batch tool. Host-supported independent tool calls can be used in small groups. |
+| Write/mixed batches | Defer. They obscure authorization, partial commits and retry behavior. Graph batching is not a transaction. Dependencies do not provide rollback. | Blocked. |
+| Beta endpoints | Opt-in only for a concrete feature unavailable in v1.0, with a pinned schema, endpoint tests and explicit capability flag. Do not enable an arbitrary /beta passthrough. | Blocked; OneNote and presence use v1.0. |
+| Rich operation schemas | High priority. Extend graph_describe with pinned, route/method-specific body/query schemas, examples, permission variants and validation fixtures. Metadata does not establish runtime permission or endpoint success. | Routes, methods, read classification, permission guidance, and now body_format. No complete Graph schema service. |
+| Delta/synchronization | Useful for explicit repeated reads of a supported resource. Durable background sync needs its own identity, checkpoint, expiry and deletion handling design. One-hour handles are not durable sync checkpoints. | Cataloged drive delta plus continuation support; no background synchronization or subscriptions. |
+| Async operation tracking | Useful for copy and other accepted operations. Requires owner-bound, validated monitor handles, status/error reporting, deadline and cancellation where supported. Do not interpret 202 as completion. | 202 is reported as accepted; general copy/OneNote operation monitoring is not implemented. Native upload status is separate. |
+| Conditional writes | Retain eTags and If-Match; reread and reconcile 412 conflicts rather than overwriting. Do not assume every Graph endpoint supports conditional writes. | Supported header forwarding. |
+| Binary/large-result delivery | High priority for broader document workflows: owner-isolated staging/streaming for non-drive binaries and large text. Keep credentials and document bytes outside the model context. | Drive transfer descriptors/status/cancel; 2 MB inline, 60 KB request body, 250 MB native drive transfers. No general attachment/OneNote resource binary transfer or shared staging. |
+
+Suggested engineering order: endpoint schema/fixture accuracy and bounded read retries; bounded read multi-fetch; large-result/non-drive transfer support; optional bounded page collection and async monitors. Beta and unattended synchronization should be driven by an actual user workflow.
+
+Graph supports up to 20 requests in a JSON batch, but each request is throttled separately. OneNote has its own concurrency/rate limits and its documented throttled responses may omit Retry-After; a retry implementation needs a fallback. Use entire returned next links, preserving opaque tokens and required headers, rather than rebuilding pagination URLs.
+
+Sources: [Graph batching](https://learn.microsoft.com/en-us/graph/json-batching), [throttling](https://learn.microsoft.com/en-us/graph/throttling), [service limits](https://learn.microsoft.com/en-us/graph/throttling-limits), [paging](https://learn.microsoft.com/en-us/graph/paging).

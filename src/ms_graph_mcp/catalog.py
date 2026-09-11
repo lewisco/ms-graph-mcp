@@ -18,6 +18,7 @@ class Operation:
     method: str
     read_only: bool
     permission_guidance: str
+    body_format: str = "json_object"
 
     def matches(self, path):
         return route_pattern(self.path).fullmatch(path) is not None
@@ -26,10 +27,17 @@ class Operation:
 OPERATIONS: list[Operation] = []
 
 
-def add(service, path, methods, permission, read_posts=()):
+def add(service, path, methods, permission, read_posts=(), *, body_format="json_object"):
     for method in methods.split():
         OPERATIONS.append(
-            Operation(service, path, method, method == "GET" or method in read_posts, permission)
+            Operation(
+                service,
+                path,
+                method,
+                method == "GET" or method in read_posts,
+                permission,
+                body_format,
+            )
         )
 
 
@@ -272,6 +280,54 @@ collection(
     create=False,
     edit=False,
 )
+
+# OneNote has HTML creation and JSON-array content patches, not generic CRUD.
+for owner in ("/me", "/users/{user}", "/groups/{group}", "/sites/{site}"):
+    notes = owner + "/onenote"
+    scope = "Notes.ReadWrite.All (accessible notebooks); Notes.ReadWrite for own notebooks"
+    add("onenote", notes + "/notebooks", "GET POST", scope)
+    for resource in ("notebooks", "sections", "sectionGroups", "pages"):
+        add("onenote", notes + "/" + resource, "GET", scope)
+        add("onenote", notes + "/" + resource + "/{id}", "GET", scope)
+    for parent in ("/notebooks/{notebook}", "/sectionGroups/{sectionGroup}"):
+        for child in ("sections", "sectionGroups"):
+            add("onenote", notes + parent + "/" + child, "GET POST", scope)
+    add("onenote", notes + "/sections/{section}/pages", "GET", scope)
+    for pages in ("/pages", "/sections/{section}/pages"):
+        add("onenote", notes + pages, "POST", scope, body_format="html")
+    add("onenote", notes + "/pages/{page}", "DELETE", scope)
+    add("onenote", notes + "/pages/{page}/content", "GET", scope)
+    add(
+        "onenote",
+        notes + "/pages/{page}/content",
+        "PATCH",
+        scope,
+        body_format="json_array",
+    )
+
+add("presence", "/me/presence", "GET", "Presence.Read; Presence.Read.All")
+add("presence", "/users/{user}/presence", "GET", "Presence.Read.All")
+add("presence", "/communications/presences/{user}", "GET", "Presence.Read.All")
+add(
+    "presence",
+    "/communications/getPresencesByUserId",
+    "POST",
+    "Presence.Read.All; at most 650 user IDs",
+    read_posts=("POST",),
+)
+for action in (
+    "setPresence",
+    "clearPresence",
+    "setUserPreferredPresence",
+    "clearUserPreferredPresence",
+    "setStatusMessage",
+):
+    add(
+        "presence",
+        "/users/{user}/presence/" + action,
+        "POST",
+        "Presence.ReadWrite; signed-in user's object ID only; presence can expire",
+    )
 
 # Deduplicate overlapping owner/drive templates while preserving discovery order.
 OPERATIONS = list({(o.path, o.method): o for o in OPERATIONS}.values())

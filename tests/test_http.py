@@ -283,6 +283,38 @@ def test_throttle_delay_reaches_model(server, token):
     assert len(requests) == 1
 
 
+@pytest.mark.parametrize(
+    "arguments,expected_content_type",
+    [
+        (
+            {"method": "POST", "path": "/me/onenote/sections/s/pages", "html": "<p>Notes</p>"},
+            "text/html; charset=utf-8",
+        ),
+        (
+            {
+                "method": "PATCH",
+                "path": "/me/onenote/pages/p/content",
+                "body": [{"target": "body", "action": "append", "content": "<p>Next</p>"}],
+            },
+            "application/json",
+        ),
+    ],
+)
+def test_onenote_payloads_through_mcp(server, token, arguments, expected_content_type):
+    client, requests, upstream, *_ = server
+    upstream[0] = httpx.Response(204)
+    result, payload = read_payload(
+        rpc(client, token(), "tools/call", {"name": "graph_write", "arguments": arguments})
+    )
+    assert not result.get("isError")
+    assert payload["status"] == 204
+    assert requests[-1].headers["content-type"] == expected_content_type
+    if "html" in arguments:
+        assert requests[-1].content.decode() == arguments["html"]
+    else:
+        assert json.loads(requests[-1].content) == arguments["body"]
+
+
 def test_expanded_tools_discover_and_execute_via_mcp(server, token):
     client, requests, upstream, *_ = server
     incoming = token()
@@ -305,6 +337,8 @@ def test_expanded_tools_discover_and_execute_via_mcp(server, token):
         "meetings",
         "copilot",
         "directory",
+        "onenote",
+        "presence",
     }
     assert capabilities["stage"] != "authentication"
     _, catalog = read_payload(
