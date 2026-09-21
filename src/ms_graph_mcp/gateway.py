@@ -12,6 +12,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from ms_graph_mcp.catalog import OPERATIONS, canonical_path, resolve
 from ms_graph_mcp.graph import GraphClient, GraphFailure
+from ms_graph_mcp.pages import validate_page_query
 from ms_graph_mcp.tls import create_ssl_context
 
 ORIGIN = "https://graph.microsoft.com"
@@ -33,6 +34,7 @@ QUERY = {
     "search",
     "includeIDs",
     "sectionName",
+    "index",
 }
 MAX_RESPONSE = 2_000_000
 MAX_TRANSFER = 250_000_000
@@ -41,6 +43,7 @@ MAX_TRANSFER = 250_000_000
 class Gateway:
     def __init__(self, graph: GraphClient, settings, *, storage_http=None):
         self.graph = graph
+        self.max_request_body_bytes = settings.max_request_body_bytes
         self.storage_http = storage_http or httpx.AsyncClient(
             timeout=settings.http_timeout_seconds,
             follow_redirects=False,
@@ -137,8 +140,11 @@ class Gateway:
         if operation.body_format == "html":
             if not isinstance(html, str) or not html.strip() or body is not None:
                 raise ValueError("OneNote page creation requires html and no JSON body.")
-            if len(html.encode("utf-8")) > 60000:
-                raise ValueError("HTML request exceeds 60000 bytes; multipart is not supported.")
+            if len(html.encode("utf-8")) > self.max_request_body_bytes:
+                raise ValueError(
+                    f"HTML request exceeds {self.max_request_body_bytes} bytes; "
+                    "multipart is not supported."
+                )
         elif html is not None:
             raise ValueError("html is supported only for OneNote page creation.")
         elif operation.body_format == "json_array":
@@ -172,6 +178,7 @@ class Gateway:
                 "session headers are allowed."
             )
         query = query or {}
+        validate_page_query(method, path, query)
         if ("includeIDs" in query or "sectionName" in query) and operation.service != "onenote":
             raise ValueError("includeIDs and sectionName are OneNote-only query parameters.")
         if any(k not in QUERY for k in query):
@@ -180,8 +187,19 @@ class Gateway:
             )
         if method in ("GET", "DELETE") and body is not None:
             raise ValueError("This method does not accept a request body.")
-        if body is not None and len(json.dumps(body).encode()) > 60000:
-            raise ValueError("JSON request too large. Use native file transfers for file content.")
+        if body is not None:
+            payload_size = len(
+                json.dumps(
+                    body, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+                ).encode()
+            )
+            if payload_size > self.max_request_body_bytes:
+                raise ValueError(
+                    f"JSON request exceeds {self.max_request_body_bytes} bytes. "
+                    "Use smaller page/web-part updates or configure a larger "
+                    "GRAPH_MCP_MAX_REQUEST_BODY_BYTES. Native file transfers do not "
+                    "transfer page JSON."
+                )
         request_id = str(uuid4())
         request_headers = {
             **headers,

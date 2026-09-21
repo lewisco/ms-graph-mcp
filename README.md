@@ -4,12 +4,13 @@ An internal Streamable HTTP MCP server designed for Open WebUI and LiteLLM, with
 
 **Status: delegated Microsoft 365 tools implemented; the user has verified the WebUI → LiteLLM → MCP connection. Expanded service operations require work-side consent and live validation.**
 
-Eight MCP tools expose cataloged reads/writes for mail, calendars, contacts, Teams/chats, meetings, files, SharePoint, tasks, Excel, people and basic directory discovery, plus owner-bound pagination and native drive transfers. Use `graph_capabilities` and `graph_describe` to discover the deployed catalog.
+Ten MCP tools expose cataloged reads/writes for mail, calendars, contacts, Teams/chats, meetings, files, SharePoint pages, tasks, Excel, people and basic directory discovery, plus owner-bound pagination and native drive transfers. Optional `sharepoint_read`/`sharepoint_write` manage navigation, existing themes and the homepage of one configured site using separate delegated SharePoint consent. Use `graph_capabilities` and `graph_describe` to discover the deployed capabilities.
 
 Native drive transfers target 250 MB. Shared staging for large transcripts/JSON, non-drive binary transfers, document editing/rendering and full workflow acceptance remain incomplete. Tenant administration, beta and batch APIs are excluded. See the [tool guide](docs/usage.md) for exact limits.
 
 ## Documentation
 
+- [SharePoint publishing and 0.4.0 rollout](docs/sharepoint-publishing.md): page/layout operations, site settings, configuration, permissions and live acceptance.
 - [User guide](docs/usage.md): connect Microsoft, use the available tools, and understand errors.
 - [Version 0.3.0 rollout](docs/rollout-0.3.0.md): OneNote, presence and additional delegated permissions.
 - [Open WebUI system prompt](docs/open-webui-system-prompt.md): copy into the custom model with this MCP and Open Terminal.

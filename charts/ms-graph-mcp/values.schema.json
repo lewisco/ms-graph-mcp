@@ -23,7 +23,9 @@
         "allowedOrigins": {"type": "array", "items": {"type": "string"}},
         "httpTimeoutSeconds": {"type": "number", "minimum": 1, "maximum": 120},
         "oboCacheEntries": {"type": "integer", "minimum": 1, "maximum": 4096},
-        "oboMaxConcurrentExchanges": {"type": "integer", "minimum": 1, "maximum": 32}
+        "oboMaxConcurrentExchanges": {"type": "integer", "minimum": 1, "maximum": 32},
+        "maxRequestBodyBytes": {"type": "integer", "minimum": 60000, "maximum": 2000000},
+        "sharepointSiteUrl": {"type": "string"}
       }
     },
     "credentials": {

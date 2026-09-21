@@ -1,6 +1,6 @@
 # Microsoft 365 tools
 
-The server exposes eight MCP tools for delegated Microsoft 365 access. Mail, shared mailboxes, calendars, contacts, Outlook settings, Teams/chats, meetings and insights, files, SharePoint, Planner, To Do, Excel, OneNote, presence, people and basic directory discovery are available through the route catalog. Graph consent, user rights and service eligibility determine which calls succeed.
+The server exposes ten MCP tools for delegated Microsoft 365 access. Mail, shared mailboxes, calendars, contacts, Outlook settings, Teams/chats, meetings and insights, files, SharePoint, Planner, To Do, Excel, OneNote, presence, people and basic directory discovery are available through the route catalog. Graph consent, user rights and service eligibility determine which calls succeed. Optional SharePoint site settings use a separate delegated resource token; see [SharePoint publishing](sharepoint-publishing.md).
 
 ## Discover and use operations
 
@@ -14,10 +14,14 @@ The server exposes eight MCP tools for delegated Microsoft 365 access. Mail, sha
 | `graph_prepare_transfer` | Prepare native drive downloads and resumable uploads up to 250,000,000 bytes |
 | `graph_transfer_status` | Inspect a native transfer or check a completed upload's destination drive and size |
 | `graph_transfer_manage` | Cancel a native upload session at Microsoft |
+| `sharepoint_read` | Read settings, navigation or available themes for the configured site |
+| `sharepoint_write` | Add/update/delete navigation nodes, apply an existing theme or assign an existing homepage |
 
 Connect Microsoft in WebUI, then call `graph_capabilities` and `graph_describe(service="mail")`. Availability is reported as `supported_unverified` because exposing an operation does not establish your consent or resource access. The server does not enumerate licenses or grant permissions.
 
 Use Graph-relative paths without `/v1.0` or a hostname. Put query options in `query` and JSON payloads in `body`. OneNote page creation instead takes `html` on `graph_write`; OneNote content PATCH takes an array of command objects in `body`. Discovery reports `body_format`. See [OneNote/presence examples](rollout-0.3.0.md). Query values are strings. Supported headers are `Prefer`, `ConsistencyLevel`, `If-Match`, `If-None-Match` and `workbook-session-id`; authentication headers cannot be supplied by callers. Unknown routes and writes through `graph_read` are rejected before Graph is called.
+
+Site discovery also accepts Graph's `/sites/tenant.sharepoint.com:/sites/AIHub` addressing form, sent to the fixed Graph origin. See [page examples and site-settings setup](sharepoint-publishing.md) for the publishing workflow.
 
 ### Read examples
 

@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+import re
 import ssl
 import time
 from collections import OrderedDict
@@ -19,6 +20,10 @@ from ms_graph_mcp.errors import AuthFailure
 from ms_graph_mcp.tls import EntraTLSAdapter, create_ssl_context
 
 GRAPH_SCOPES = ["https://graph.microsoft.com/.default"]
+_SHAREPOINT_ORIGIN = re.compile(
+    r"https://[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.sharepoint\.com",
+    re.IGNORECASE | re.ASCII,
+)
 
 
 @dataclass(frozen=True)
@@ -59,9 +64,24 @@ class OboClient:
         self,
         settings: Settings,
         *,
+        resource_origin: str | None = None,
         exchange: Callable[[str], dict[str, Any]] | None = None,
         clock: Callable[[], float] = time.time,
     ):
+        if resource_origin is not None and (
+            not isinstance(resource_origin, str)
+            or not _SHAREPOINT_ORIGIN.fullmatch(resource_origin)
+        ):
+            raise ValueError(
+                "resource_origin must be an HTTPS tenant.sharepoint.com origin "
+                "without credentials, port, path, query or fragment."
+            )
+        self._resource_origin = (
+            resource_origin.lower()
+            if resource_origin is not None
+            else "https://graph.microsoft.com"
+        )
+        self._scopes = (self._resource_origin + "/.default",)
         self.settings = settings
         self._exchange = exchange or self._exchange_sync
         self._clock = clock
@@ -70,6 +90,14 @@ class OboClient:
         self._pending: dict[str, asyncio.Task[GraphToken]] = {}
         self._closed = False
         self._ssl_context = create_ssl_context(settings)
+
+    @property
+    def resource_origin(self) -> str:
+        return self._resource_origin
+
+    @property
+    def scopes(self) -> tuple[str, ...]:
+        return self._scopes
 
     def _exchange_sync(self, assertion: str) -> dict[str, Any]:
         with _EntraSession(self.settings.http_timeout_seconds, self._ssl_context) as session:
@@ -87,7 +115,7 @@ class OboClient:
                 client_capabilities=["CP1"],
                 enable_pii_log=False,
             )
-            return client.acquire_token_on_behalf_of(assertion, scopes=GRAPH_SCOPES)
+            return client.acquire_token_on_behalf_of(assertion, scopes=list(self._scopes))
 
     async def acquire(self, assertion: str, assertion_expiry: int) -> GraphToken:
         if self._closed:
@@ -189,7 +217,9 @@ class OboClient:
             )
         if error in {"invalid_client", "unauthorized_client", "invalid_scope"}:
             raise AuthFailure(
-                503, "configuration_error", "Check the MCP Entra registration and Graph consent."
+                503,
+                "configuration_error",
+                "Check the MCP Entra registration and downstream API consent.",
             )
         raise AuthFailure(503, "temporarily_unavailable", "Microsoft token exchange failed.")
 

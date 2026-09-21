@@ -43,7 +43,7 @@ flowchart LR
     M -->|OBO| E[Microsoft Entra]
 ```
 
-Open WebUI coordinates tool calls and model input. LiteLLM routes MCP calls and provides gateway admission. The MCP performs Graph requests, token exchange, response selection, and transfer preparation. The terminal owns document parsing, creation, editing, rendering, and local analysis.
+Open WebUI coordinates tool calls and model input. LiteLLM routes MCP calls and provides gateway admission. The MCP performs Graph requests, token exchange, response selection, and transfer preparation. Optional site-settings tools use SharePoint REST with a separately acquired delegated resource token and a fixed configured site URL. The terminal owns document parsing, creation, editing, rendering, and local analysis. See [SharePoint publishing](sharepoint-publishing.md) for the 0.4.0 implementation and remaining live acceptance.
 
 The MCP does not call terminal tools merely because both toolsets are in a chat. The model coordinates them using explicit transfer descriptors and file references. A path in the terminal is never assumed to exist on the MCP server.
 
@@ -137,7 +137,7 @@ LiteLLM 1.100.0 also contains `token_exchange_profile: entra_obo`. A token issue
 
 ### 4.1 Small tool surface, inspectable Graph operations
 
-All eight tool names below are now exposed. The implementation covers cataloged Graph operations, pagination and native drive transfers; shared artifact staging, retention extension and complete workflow acceptance remain pending. See [current tool behavior](usage.md). Keep initial tool descriptions short; load endpoint detail on demand.
+All ten tool names below are now exposed. The implementation covers cataloged Graph operations, pagination, native drive transfers and optional fixed-site SharePoint settings; shared artifact staging, retention extension and complete workflow acceptance remain pending. See [current tool behavior](usage.md). Keep initial tool descriptions short; load endpoint detail on demand.
 
 | Tool | Purpose and principal inputs |
 | --- | --- |
@@ -149,6 +149,8 @@ All eight tool names below are now exposed. The implementation covers cataloged 
 | `graph_prepare_transfer` | Prepare download/upload for a Graph file, attachment, transcript, or stored result |
 | `graph_transfer_status` | Read transfer state and verify an uploaded destination |
 | `graph_transfer_manage` | Explicitly cancel/release a transfer or extend permitted artifact retention |
+| `sharepoint_read` | Read settings, navigation or existing themes for the configured site |
+| `sharepoint_write` | Change navigation, apply an existing theme or assign an existing homepage |
 
 Use Graph-relative paths and Graph-native JSON bodies. A small catalog adds discoverability and known read/write semantics without generating a separate MCP tool for every endpoint. `graph_describe` can be backed by curated endpoint metadata, expanded from Microsoft metadata during development; it must not dump the complete Graph schema into model context.
 

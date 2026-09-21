@@ -5,9 +5,20 @@ from dataclasses import asdict, dataclass
 from functools import lru_cache
 from urllib.parse import unquote
 
+from ms_graph_mcp.pages import PAGE, PAGE_GUIDANCE, PAGE_WEBPART_COLLECTIONS
+
+SITE_BY_PATH = "/sites/{hostname}:/{relative_path}"
+
 
 @lru_cache(maxsize=2048)
 def route_pattern(template):
+    if template == SITE_BY_PATH:
+        # Only site discovery may span path segments. Excluding another colon prevents
+        # using Graph's :/ navigation syntax to escape into an uncatalogued resource.
+        return re.compile(r"/sites/[A-Za-z0-9][A-Za-z0-9.-]*:/[^/:$]+(?:/[^/:$]+)*")
+    if template == "/sites/{site}/pages/{page}":
+        # A type-cast collection is not an item ID (in particular, not deletable).
+        return re.compile(r"/sites/[^/]+/pages/(?!microsoft\.graph\.)[^/]+")
     return re.compile(re.sub(r"\\\{[^{}]+\\\}", r"[^/]+", re.escape(template)))
 
 
@@ -182,23 +193,52 @@ add("directory", "/groups", "GET", "Group.Read.All")
 add("directory", "/groups/{group}", "GET", "Group.Read.All")
 add("sites", "/sites", "GET", "Sites.Read.All")
 add("sites", "/sites/{site}", "GET", "Sites.Read.All")
+add("sites", SITE_BY_PATH, "GET", "Sites.Read.All")
 add("sites", "/sites/{site}/sites", "GET", "Sites.Read.All")
 add("sites", "/sites/{site}/drives", "GET", "Files.ReadWrite.All")
-for path in ("/sites/{site}/lists", "/sites/{site}/lists/{list}/items", "/sites/{site}/pages"):
+for path in ("/sites/{site}/lists", "/sites/{site}/lists/{list}/items"):
     collection("sites", path, "Sites.ReadWrite.All")
 add("sites", "/sites/{site}/lists/{list}/items/{item}/fields", "GET PATCH", "Sites.ReadWrite.All")
+
+# Page methods are explicit: columns are read-only resources, and the singleton
+# vertical section uses PUT for creation. Generic CRUD would advertise invalid routes.
+for path in (
+    "/sites/{site}/pages",
+    "/sites/{site}/pages/{page}",
+    "/sites/{site}/pages/microsoft.graph.sitePage",
+    PAGE,
+):
+    add("sites", path, "GET", "Sites.Read.All; Sites.ReadWrite.All also accepted")
+add("sites", "/sites/{site}/pages", "POST", "Sites.ReadWrite.All")
+add("sites", "/sites/{site}/pages/{page}", "DELETE", "Sites.ReadWrite.All")
+add("sites", PAGE, "PATCH", "Sites.ReadWrite.All")
 add(
     "sites",
-    "/sites/{site}/pages/{page}/microsoft.graph.sitePage",
-    "GET PATCH",
-    "Sites.ReadWrite.All",
-)
-add(
-    "sites",
-    "/sites/{site}/pages/{page}/microsoft.graph.sitePage/publish",
+    PAGE + "/publish",
     "POST",
-    "Sites.ReadWrite.All",
+    "Files.ReadWrite; Files.ReadWrite.All or Sites.ReadWrite.All also accepted",
 )
+horizontal = PAGE + "/canvasLayout/horizontalSections"
+vertical = PAGE + "/canvasLayout/verticalSection"
+for path in (horizontal, horizontal + "/{section}", vertical):
+    add("sites", path, "GET", "Sites.Read.All; Sites.ReadWrite.All also accepted")
+add("sites", horizontal, "POST", "Sites.ReadWrite.All")
+add("sites", horizontal + "/{section}", "PATCH DELETE", "Sites.ReadWrite.All")
+add("sites", vertical, "PUT PATCH DELETE", "Sites.ReadWrite.All")
+columns = horizontal + "/{section}/columns"
+for path in (columns, columns + "/{column}"):
+    add("sites", path, "GET", "Sites.Read.All; Sites.ReadWrite.All also accepted")
+add("sites", PAGE + "/webparts", "GET", "Sites.Read.All")
+for path in PAGE_WEBPART_COLLECTIONS:
+    add("sites", path, "GET", "Sites.Read.All")
+    add("sites", path, "POST", "Sites.ReadWrite.All")
+for path in (
+    PAGE + "/webParts/{webpart}",
+    *(collection_path + "/{index}" for collection_path in PAGE_WEBPART_COLLECTIONS),
+):
+    add("sites", path, "GET", "Sites.Read.All")
+    add("sites", path, "PATCH DELETE", "Sites.ReadWrite.All")
+    add("sites", path + "/getPositionOfWebPart", "GET", "Sites.Read.All")
 
 for drive in (
     "/me/drive",
@@ -365,7 +405,7 @@ def describe(service=None, query=None, path=None, method=None, offset=0, limit=2
         and (not path or o.matches(canonical_path(path)))
         and (not method or o.method == method)
     ]
-    return {
+    result = {
         "operations": [asdict(o) for o in matches[offset : offset + limit]],
         "total": len(matches),
         "next_offset": offset + limit if offset + limit < len(matches) else None,
@@ -376,3 +416,6 @@ def describe(service=None, query=None, path=None, method=None, offset=0, limit=2
             "consent and user rights. Admin, beta and batch routes are excluded."
         ),
     }
+    if any(o.service == "sites" and "/pages" in o.path for o in matches):
+        result["sharepoint_pages"] = PAGE_GUIDANCE
+    return result

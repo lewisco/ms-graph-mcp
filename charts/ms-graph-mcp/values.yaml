@@ -21,6 +21,10 @@ config:
   httpTimeoutSeconds: 15
   oboCacheEntries: 128
   oboMaxConcurrentExchanges: 4
+  # Raise for rich page JSON. The MCP envelope limit is derived automatically.
+  maxRequestBodyBytes: 60000
+  # Optional fixed destination for site navigation/theme/homepage tools.
+  sharepointSiteUrl: ""
 
 credentials:
   existingSecret: ""

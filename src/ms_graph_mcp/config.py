@@ -1,5 +1,6 @@
 """Explicit tenant/resource configuration; no tenant or credential auto-discovery."""
 
+import re
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -24,6 +25,45 @@ class Settings(BaseSettings):
     obo_cache_entries: int = Field(default=128, ge=1, le=4096)
     obo_max_concurrent_exchanges: int = Field(default=4, ge=1, le=32)
     extra_ca_file: FilePath | None = None
+    max_request_body_bytes: int = Field(default=60000, ge=60000, le=2000000)
+    sharepoint_site_url: str | None = None
+
+    @field_validator("sharepoint_site_url")
+    @classmethod
+    def canonical_sharepoint_site(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        parts = urlsplit(value)
+        hostname = parts.hostname or ""
+        path = parts.path.rstrip("/")
+        if (
+            parts.scheme != "https"
+            or not parts.netloc.isascii()
+            or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.sharepoint\.com", hostname)
+            or parts.netloc.lower() != hostname
+            or parts.query
+            or parts.fragment
+            or not re.fullmatch(r"(?:/[A-Za-z0-9._~-]+)*", path)
+            or any(segment in (".", "..") for segment in path.split("/"))
+            or any(c.isspace() or ord(c) < 32 for c in value)
+        ):
+            raise ValueError(
+                "sharepoint_site_url must be an HTTPS tenant.sharepoint.com site URL, "
+                "with an unescaped site path and no credentials, port, query or fragment."
+            )
+        return f"https://{hostname}{path}"
+
+    @property
+    def sharepoint_resource_origin(self) -> str | None:
+        if self.sharepoint_site_url is None:
+            return None
+        return "https://" + urlsplit(self.sharepoint_site_url).netloc
+
+    @property
+    def max_mcp_request_bytes(self) -> int:
+        # Allow JSON escaping (up to six bytes per HTML character) plus the RPC
+        # envelope/query/headers. The decoded outbound payload has its own bound.
+        return self.max_request_body_bytes * 6 + 65536
 
     @field_validator("resource_url")
     @classmethod

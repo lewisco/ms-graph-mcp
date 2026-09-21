@@ -19,11 +19,12 @@ from starlette.responses import JSONResponse
 from ms_graph_mcp.auth import DelegatedAccessToken, EntraVerifier
 from ms_graph_mcp.catalog import OPERATIONS, describe
 from ms_graph_mcp.config import Settings
-from ms_graph_mcp.errors import AuthFailureMiddleware
+from ms_graph_mcp.errors import AuthFailure, AuthFailureMiddleware
 from ms_graph_mcp.gateway import Gateway
 from ms_graph_mcp.graph import DEFAULT_FIELDS, GraphClient, GraphFailure, ProfileField
 from ms_graph_mcp.obo import OboClient
 from ms_graph_mcp.request_security import RequestSecurityMiddleware
+from ms_graph_mcp.sharepoint import SharePointClient
 from ms_graph_mcp.tls import create_ssl_context
 
 
@@ -33,6 +34,7 @@ def create_app(
     verifier: EntraVerifier | None = None,
     obo: OboClient | None = None,
     graph_http: httpx.AsyncClient | None = None,
+    sharepoint_obo: OboClient | None = None,
 ) -> Starlette:
     settings = settings or Settings()
     obo = obo or OboClient(settings)
@@ -46,6 +48,13 @@ def create_app(
     )
     graph = GraphClient(http, obo)
     gateway = Gateway(graph, settings)
+    site_obo = None
+    sharepoint = None
+    if settings.sharepoint_site_url:
+        site_obo = sharepoint_obo or OboClient(
+            settings, resource_origin=settings.sharepoint_resource_origin
+        )
+        sharepoint = SharePointClient(http, site_obo, settings)
 
     @asynccontextmanager
     async def lifespan(server: MCPServer) -> AsyncIterator[None]:
@@ -56,15 +65,19 @@ def create_app(
             await http.aclose()
             await verifier.aclose()
             await obo.aclose()
+            if site_obo is not None:
+                await site_obo.aclose()
 
     mcp = MCPServer(
         "ms-graph-mcp",
-        version="0.3.0",
+        version="0.4.0",
         instructions=(
             "Delegated Microsoft 365 operations: discover services with graph_capabilities and "
             "routes with graph_describe. Use graph_read for reads, graph_write for mutations, "
             "graph_continue for page handles, and transfer tools for native drive files. "
             "Access depends on user rights and Graph consent. Do not repeat uncertain writes. "
+            "SharePoint site settings use sharepoint_read/sharepoint_write when configured; "
+            "discover the site and operations in graph_capabilities. "
             "Tenant administration, beta, batch, and server-staged artifacts are not exposed."
         ),
         token_verifier=verifier,
@@ -100,6 +113,21 @@ def create_app(
             )
         try:
             return tool_result(await operation(identity))
+        except AuthFailure as exc:
+            # SharePoint consent is acquired lazily within its tool call so a missing
+            # optional permission cannot disable unrelated Graph tools. MCP clients
+            # cannot automatically satisfy a claims challenge in a tool result.
+            return tool_result(
+                {
+                    "status": exc.status,
+                    "error": {"code": exc.code, "message": exc.description},
+                    "resource": settings.sharepoint_resource_origin,
+                    "reconnect_required": exc.status in (401, 403),
+                    "claims_challenge_required": bool(exc.claims),
+                    "retry_after_seconds": 10 if exc.status == 503 else None,
+                },
+                True,
+            )
         except GraphFailure as exc:
             return tool_result(
                 {
@@ -117,7 +145,7 @@ def create_app(
                         "code": "invalid_operation",
                         "message": str(exc)
                         if isinstance(exc, ValueError)
-                        else "Invalid Graph response or operation input.",
+                        else "Invalid Microsoft response or operation input.",
                     }
                 },
                 True,
@@ -148,13 +176,30 @@ def create_app(
             },
             "limits": {
                 "inline_response_bytes": 2000000,
-                "request_body_bytes": 60000,
+                "request_body_bytes": settings.max_request_body_bytes,
+                "mcp_request_bytes": settings.max_mcp_request_bytes,
                 "onenote_multipart": False,
                 "presence_write": "Signed-in user's object ID only; no automatic renewal.",
                 "beta": False,
                 "batch": False,
                 "tenant_administration": False,
                 "word_powerpoint_editing": "Use terminal tools after download.",
+            },
+            "sharepoint": {
+                "enabled": sharepoint is not None,
+                "site_url": settings.sharepoint_site_url,
+                "availability": "supported_unverified" if sharepoint else "not_configured",
+                "read_operations": ["settings", "navigation", "themes"],
+                "write_operations": [
+                    "navigation_add",
+                    "navigation_update",
+                    "navigation_delete",
+                    "apply_theme",
+                    "set_home_page",
+                ],
+                "navigation_locations": ["quicklaunch", "topnavigationbar"],
+                "authentication": "Separate delegated SharePoint token; user site rights apply.",
+                "configuration": "GRAPH_MCP_SHAREPOINT_SITE_URL enables a single site.",
             },
         }
 
@@ -267,6 +312,112 @@ def create_app(
         """
         return await execute(lambda identity: gateway.transfer_manage(identity, transfer, action))
 
+    def configured_sharepoint():
+        if sharepoint is None:
+            raise ValueError(
+                "SharePoint site settings are disabled. Configure GRAPH_MCP_SHAREPOINT_SITE_URL "
+                "and delegated SharePoint consent; Graph page tools remain available."
+            )
+        return sharepoint
+
+    @mcp.tool(annotations=readonly)
+    async def sharepoint_read(
+        operation: Literal["settings", "navigation", "themes"],
+        location: Literal["quicklaunch", "topnavigationbar"] = "quicklaunch",
+        parent_id: int | None = None,
+    ) -> CallToolResult:
+        """Read the configured SharePoint site's settings, navigation, or available themes.
+        Navigation returns root nodes at location, or children of parent_id. These IDs
+        are SharePoint navigation IDs, not Graph page IDs. Uses separate delegated
+        SharePoint consent. Inspect graph_capabilities for the configured destination.
+        """
+
+        async def run(identity):
+            client = configured_sharepoint()
+            if operation == "navigation":
+                return await client.read_navigation(identity, location, parent_id)
+            if parent_id is not None or location != "quicklaunch":
+                raise ValueError("location and parent_id apply only to navigation reads.")
+            if operation == "themes":
+                return await client.read_themes(identity)
+            return await client.read_settings(identity)
+
+        return await execute(run)
+
+    @mcp.tool(annotations=write)
+    async def sharepoint_write(
+        operation: Literal[
+            "navigation_add",
+            "navigation_update",
+            "navigation_delete",
+            "apply_theme",
+            "set_home_page",
+        ],
+        location: Literal["quicklaunch", "topnavigationbar"] = "quicklaunch",
+        node_id: int | None = None,
+        parent_id: int | None = None,
+        title: str | None = None,
+        url: str | None = None,
+        theme_name: str | None = None,
+        page_path: str | None = None,
+    ) -> CallToolResult:
+        """Change navigation, apply an existing theme, or set the configured site's homepage.
+        navigation_add needs title/url and optional parent_id; update needs node_id
+        and title and/or url; delete needs node_id. apply_theme needs theme_name from
+        sharepoint_read(themes). set_home_page needs an existing SitePages/*.aspx path
+        relative to the site. Inspect the result with sharepoint_read/Playwright.
+        Never blindly replay an uncertain write. No tenant theme creation is exposed.
+        """
+
+        async def run(identity):
+            client = configured_sharepoint()
+            supplied = {
+                k
+                for k, v in {
+                    "node_id": node_id,
+                    "parent_id": parent_id,
+                    "title": title,
+                    "url": url,
+                    "theme_name": theme_name,
+                    "page_path": page_path,
+                }.items()
+                if v is not None
+            }
+            allowed = {
+                "navigation_add": {"parent_id", "title", "url"},
+                "navigation_update": {"node_id", "title", "url"},
+                "navigation_delete": {"node_id"},
+                "apply_theme": {"theme_name"},
+                "set_home_page": {"page_path"},
+            }[operation]
+            if supplied - allowed or (
+                not operation.startswith("navigation_") and location != "quicklaunch"
+            ):
+                raise ValueError("Supply only the arguments used by the selected operation.")
+            if operation == "apply_theme":
+                if not theme_name:
+                    raise ValueError(
+                        "apply_theme requires theme_name from sharepoint_read(themes)."
+                    )
+                return await client.apply_theme(identity, theme_name)
+            if operation == "set_home_page":
+                if not page_path:
+                    raise ValueError(
+                        "set_home_page requires a site-relative SitePages/*.aspx path."
+                    )
+                return await client.set_home_page(identity, page_path)
+            return await client.write_navigation(
+                identity,
+                operation.removeprefix("navigation_"),
+                location=location,
+                node_id=node_id,
+                parent_id=parent_id,
+                title=title,
+                url=url,
+            )
+
+        return await execute(run)
+
     @mcp.custom_route("/healthz", methods=["GET"])
     async def health(request: Request) -> JSONResponse:
         return JSONResponse({"status": "ok"})
@@ -297,7 +448,7 @@ def create_app(
         streamable_http_path="/mcp",
         json_response=True,
         stateless_http=True,
-        max_request_body_size=65536,
+        max_request_body_size=settings.max_mcp_request_bytes,
         transport_security=transport_security,
     )
     app.add_middleware(AuthFailureMiddleware, metadata_url=settings.metadata_url)

@@ -138,6 +138,8 @@ def test_required_zone_spread():
         "transportSecurity.existingSecret=",
         "transportSecurity.mode=plaintext",
         "config.oboMaxConcurrentExchanges=0",
+        "config.maxRequestBodyBytes=59999",
+        "config.maxRequestBodyBytes=2000001",
     ],
 )
 def test_invalid_deployments_fail_during_render(invalid):

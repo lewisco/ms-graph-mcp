@@ -15,7 +15,8 @@ HEADERS = {"Accept": "application/json, text/event-stream"}
 
 
 @pytest.fixture
-def server(settings, jwks):
+def server(settings, jwks, request):
+    settings = settings.model_copy(update=getattr(request, "param", {}))
     requests = []
     upstream = [
         httpx.Response(
@@ -75,6 +76,253 @@ def read_payload(response):
     return result, json.loads(result["content"][0]["text"])
 
 
+@pytest.mark.parametrize(
+    "name,arguments",
+    [
+        ("sharepoint_read", {"operation": "settings"}),
+        ("sharepoint_write", {"operation": "apply_theme", "theme_name": "Brand"}),
+    ],
+)
+def test_sharepoint_disabled_without_destination(server, token, name, arguments):
+    client, requests, *_ = server
+    result, payload = read_payload(
+        rpc(
+            client,
+            token(),
+            "tools/call",
+            {
+                "name": name,
+                "arguments": arguments,
+            },
+        )
+    )
+    assert result["isError"]
+    assert "GRAPH_MCP_SHAREPOINT_SITE_URL" in payload["error"]["message"]
+    assert not requests
+
+
+@pytest.mark.parametrize("server", [{"max_request_body_bytes": 200000}], indirect=True)
+def test_large_page_through_mcp_obeys_configured_limit(server, token):
+    client, requests, upstream, *_ = server
+    incoming = token()
+    upstream[0] = httpx.Response(200, json={"id": "page"})
+    # Escaped JSON on the inbound wire is much bigger than its decoded UTF-8 payload.
+    body = {"@odata.type": "#microsoft.graph.sitePage", "description": "é" * 45000}
+    response = client.post(
+        "/mcp",
+        headers={
+            **HEADERS,
+            "Authorization": f"Bearer {incoming}",
+            "Content-Type": "application/json",
+        },
+        content=json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "graph_write",
+                    "arguments": {
+                        "method": "PATCH",
+                        "path": "/sites/site/pages/page/microsoft.graph.sitePage",
+                        "body": body,
+                    },
+                },
+            }
+        ),
+    )
+    result, _ = read_payload(response)
+    assert not result.get("isError")
+    assert json.loads(requests[-1].content) == body
+    count = len(requests)
+    body["description"] = "x" * 200000
+    result, payload = read_payload(
+        rpc(
+            client,
+            incoming,
+            "tools/call",
+            {
+                "name": "graph_write",
+                "arguments": {
+                    "method": "PATCH",
+                    "path": "/sites/site/pages/page/microsoft.graph.sitePage",
+                    "body": body,
+                },
+            },
+        )
+    )
+    assert result["isError"]
+    assert "200000 bytes" in payload["error"]["message"]
+    assert len(requests) == count
+    _, caps = read_payload(rpc(client, incoming, "tools/call", {"name": "graph_capabilities"}))
+    assert caps["limits"]["request_body_bytes"] == 200000
+    assert caps["limits"]["mcp_request_bytes"] == 1265536
+
+
+def test_mcp_outer_limit_rejects_oversize_before_operation(server, token, settings):
+    client, requests, *_ = server
+    response = client.post(
+        "/mcp",
+        headers={
+            **HEADERS,
+            "Authorization": f"Bearer {token()}",
+            "Content-Type": "application/json",
+        },
+        content=b" " * (settings.max_mcp_request_bytes + 1),
+    )
+    assert response.status_code == 413
+    assert not requests
+
+
+@pytest.fixture
+def site_server(settings, jwks):
+    settings = settings.model_copy(
+        update={
+            "sharepoint_site_url": "https://tenant.sharepoint.com/sites/Hub",
+        }
+    )
+    requests = []
+    responses = [httpx.Response(200, json={"Id": "site-guid", "Title": "Hub"})]
+
+    def upstream(request):
+        requests.append(request)
+        if request.url.host == "graph.microsoft.com":
+            return httpx.Response(200, json={"id": "user", "displayName": "Test User"})
+        return responses[0]
+
+    graph_exchange = Mock(return_value={"access_token": "graph-only", "expires_in": 3600})
+    site_exchange = Mock(return_value={"access_token": "sharepoint-only", "expires_in": 3600})
+    obo = OboClient(settings, exchange=graph_exchange)
+    site_obo = OboClient(
+        settings, resource_origin=settings.sharepoint_resource_origin, exchange=site_exchange
+    )
+    http = httpx.AsyncClient(transport=httpx.MockTransport(upstream))
+    app = create_app(
+        settings,
+        obo=obo,
+        verifier=EntraVerifier(settings, obo, jwks=jwks),
+        graph_http=http,
+        sharepoint_obo=site_obo,
+    )
+    with TestClient(app) as client:
+        yield client, requests, responses, graph_exchange, site_exchange
+    assert http.is_closed
+    assert not obo._cache and not site_obo._cache
+
+
+def test_sharepoint_tools_execute_with_separate_token(site_server, token):
+    client, requests, responses, graph_exchange, site_exchange = site_server
+    incoming = token()
+    listing = rpc(client, incoming, "tools/list").json()["result"]["tools"]
+    annotations = {tool["name"]: tool["annotations"] for tool in listing}
+    assert annotations["sharepoint_read"]["readOnlyHint"] is True
+    assert annotations["sharepoint_write"]["readOnlyHint"] is False
+    site_exchange.assert_not_called()  # Optional resource auth is lazy.
+    result, payload = read_payload(
+        rpc(
+            client,
+            incoming,
+            "tools/call",
+            {
+                "name": "sharepoint_read",
+                "arguments": {"operation": "settings"},
+            },
+        )
+    )
+    assert not result.get("isError")
+    assert payload["data"]["Title"] == "Hub"
+    assert requests[-1].url.path == "/sites/Hub/_api/web"
+    assert requests[-1].headers["authorization"] == "Bearer sharepoint-only"
+    responses[0] = httpx.Response(
+        201, json={"Id": 7, "Title": "Guide", "Url": "/sites/Hub/SitePages/Guide.aspx"}
+    )
+    result, payload = read_payload(
+        rpc(
+            client,
+            incoming,
+            "tools/call",
+            {
+                "name": "sharepoint_write",
+                "arguments": {
+                    "operation": "navigation_add",
+                    "title": "Guide",
+                    "url": "/sites/Hub/SitePages/Guide.aspx",
+                    "location": "topnavigationbar",
+                },
+            },
+        )
+    )
+    assert not result.get("isError") and payload["data"]["Id"] == 7
+    assert requests[-1].url.path == "/sites/Hub/_api/web/navigation/topnavigationbar"
+    assert json.loads(requests[-1].content)["Title"] == "Guide"
+    read_payload(call_profile(client, incoming))
+    assert requests[-1].headers["authorization"] == "Bearer graph-only"
+    assert site_exchange.call_count == graph_exchange.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "error,status,challenge",
+    [
+        ("consent_required", 401, False),
+        ("interaction_required", 401, True),
+        ("invalid_client", 503, False),
+    ],
+)
+def test_sharepoint_consent_failure_does_not_disable_graph(
+    site_server,
+    token,
+    error,
+    status,
+    challenge,
+):
+    client, requests, _, _, site_exchange = site_server
+    site_exchange.return_value = {"error": error, "error_description": "secret-detail"}
+    if challenge:
+        site_exchange.return_value["claims"] = '{"access_token":{"acrs":{"value":"c1"}}}'
+    incoming = token()
+    result, payload = read_payload(
+        rpc(
+            client,
+            incoming,
+            "tools/call",
+            {
+                "name": "sharepoint_read",
+                "arguments": {"operation": "settings"},
+            },
+        )
+    )
+    assert result["isError"] and payload["status"] == status
+    assert payload["resource"] == "https://tenant.sharepoint.com"
+    assert payload["claims_challenge_required"] == challenge
+    assert "secret-detail" not in json.dumps(payload)
+    assert not requests
+    result, _ = read_payload(call_profile(client, incoming))
+    assert not result.get("isError")
+    assert requests[-1].url.host == "graph.microsoft.com"
+
+
+def test_sharepoint_rejects_irrelevant_write_fields_before_call(site_server, token):
+    client, requests, _, _, site_exchange = site_server
+    result, _ = read_payload(
+        rpc(
+            client,
+            token(),
+            "tools/call",
+            {
+                "name": "sharepoint_write",
+                "arguments": {
+                    "operation": "navigation_delete",
+                    "node_id": 7,
+                    "theme_name": "Brand",
+                },
+            },
+        )
+    )
+    assert result["isError"]
+    assert not requests
+    site_exchange.assert_not_called()
+
+
 def test_discovery_and_missing_auth(server, settings):
     client, requests, _, exchange, _, _ = server
     for route in ("/healthz", "/readyz"):
@@ -117,6 +365,8 @@ def test_initialize_discover_and_read(server, token, version):
         "graph_prepare_transfer",
         "graph_transfer_status",
         "graph_transfer_manage",
+        "sharepoint_read",
+        "sharepoint_write",
     }
     result, payload = read_payload(call_profile(client, incoming))
     assert not result.get("isError")

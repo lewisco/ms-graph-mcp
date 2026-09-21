@@ -96,6 +96,137 @@ async def test_msal_uses_obo_and_only_graph_scope(settings, monkeypatch):
     application.acquire_token_for_client.assert_not_called()
 
 
+async def test_msal_uses_only_configured_sharepoint_scope(settings, monkeypatch):
+    application = Mock()
+    application.acquire_token_on_behalf_of.return_value = {
+        "access_token": "sharepoint",
+        "expires_in": 3600,
+    }
+    constructor = Mock(return_value=application)
+    monkeypatch.setattr("ms_graph_mcp.obo.msal.ConfidentialClientApplication", constructor)
+    client = OboClient(settings, resource_origin="https://Contoso.sharepoint.com")
+    token = await client.acquire("user-assertion", 9999999999)
+    assert token.value.get_secret_value() == "sharepoint"
+    application.acquire_token_on_behalf_of.assert_called_once_with(
+        "user-assertion", scopes=["https://contoso.sharepoint.com/.default"]
+    )
+    application.acquire_token_for_client.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "",
+        "http://contoso.sharepoint.com",
+        "https://graph.microsoft.com",
+        "https://contoso.sharepoint.us",
+        "https://sub.contoso.sharepoint.com",
+        "https://contoso.sharepoint.com.evil.test",
+        "https://evil.test/contoso.sharepoint.com",
+        "https://user@contoso.sharepoint.com",
+        "https://user:password@contoso.sharepoint.com",
+        "https://contoso.sharepoint.com:443",
+        "https://contoso.sharepoint.com/",
+        "https://contoso.sharepoint.com/sites/hub",
+        "https://contoso.sharepoint.com?query=1",
+        "https://contoso.sharepoint.com#fragment",
+        "https://contoso.sharepoint.com\\evil",
+        "https://contoso.sharepoint.com\n",
+        " https://contoso.sharepoint.com",
+        "https://contoso.sharepoint.com ",
+        "https://-contoso.sharepoint.com",
+        "https://contoso-.sharepoint.com",
+        "https://con_toso.sharepoint.com",
+        "https://contoso.ſharepoint.com",
+        "https://contoſo.sharepoint.com",
+        "https://" + "a" * 64 + ".sharepoint.com",
+        123,
+    ],
+)
+def test_obo_rejects_non_tenant_resource_origins(settings, origin):
+    with pytest.raises(ValueError, match="HTTPS tenant.sharepoint.com origin"):
+        OboClient(settings, resource_origin=origin)
+
+
+@pytest.mark.parametrize(
+    ("origin", "expected"),
+    [
+        (None, "https://graph.microsoft.com"),
+        ("https://contoso.sharepoint.com", "https://contoso.sharepoint.com"),
+        ("HTTPS://Contoso-123.sharepoint.com", "https://contoso-123.sharepoint.com"),
+        ("https://a.sharepoint.com", "https://a.sharepoint.com"),
+    ],
+)
+def test_obo_resource_and_scopes_are_read_only(settings, origin, expected):
+    client = OboClient(settings, resource_origin=origin)
+    assert client.resource_origin == expected
+    assert client.scopes == (expected + "/.default",)
+    with pytest.raises(AttributeError):
+        client.resource_origin = "https://other.sharepoint.com"
+    with pytest.raises(AttributeError):
+        client.scopes = ("https://other.sharepoint.com/.default",)
+
+
+async def test_resource_clients_have_separate_caches_and_invalidation(settings):
+    graph_exchange = Mock(return_value={"access_token": "graph", "expires_in": 3600})
+    sharepoint_exchange = Mock(return_value={"access_token": "sharepoint", "expires_in": 3600})
+    graph = OboClient(settings, exchange=graph_exchange, clock=lambda: 1000)
+    sharepoint = OboClient(
+        settings,
+        resource_origin="https://contoso.sharepoint.com",
+        exchange=sharepoint_exchange,
+        clock=lambda: 1000,
+    )
+    graph_token, sharepoint_token = await asyncio.gather(
+        graph.acquire("same-assertion", 5000), sharepoint.acquire("same-assertion", 5000)
+    )
+    assert graph_token.value.get_secret_value() == "graph"
+    assert sharepoint_token.value.get_secret_value() == "sharepoint"
+    assert await graph.acquire("same-assertion", 5000) is graph_token
+    assert await sharepoint.acquire("same-assertion", 5000) is sharepoint_token
+    graph.invalidate("same-assertion")
+    await graph.acquire("same-assertion", 5000)
+    assert await sharepoint.acquire("same-assertion", 5000) is sharepoint_token
+    assert graph_exchange.call_count == 2
+    assert sharepoint_exchange.call_count == 1
+    await graph.aclose()
+    assert await sharepoint.acquire("same-assertion", 5000) is sharepoint_token
+    await sharepoint.aclose()
+
+
+async def test_sharepoint_failure_has_no_graph_fallback_or_shared_backoff(settings):
+    graph_exchange = Mock(return_value={"access_token": "graph", "expires_in": 3600})
+    sharepoint_exchange = Mock(return_value={"error": "invalid_scope"})
+    graph = OboClient(settings, exchange=graph_exchange, clock=lambda: 1000)
+    sharepoint = OboClient(
+        settings,
+        resource_origin="https://contoso.sharepoint.com",
+        exchange=sharepoint_exchange,
+        clock=lambda: 1000,
+    )
+    graph_token = await graph.acquire("same-assertion", 5000)
+    for _ in range(2):
+        with pytest.raises(AuthFailure) as failure:
+            await sharepoint.acquire("same-assertion", 5000)
+        assert failure.value.code == "configuration_error"
+        assert "Graph" not in failure.value.description
+        assert await graph.acquire("same-assertion", 5000) is graph_token
+    assert not graph._failures and not sharepoint._cache
+    assert graph_exchange.call_count == sharepoint_exchange.call_count == 1
+    graph.invalidate("same-assertion")
+    await graph.acquire("same-assertion", 5000)
+    with pytest.raises(AuthFailure):
+        await sharepoint.acquire("same-assertion", 5000)
+    assert graph_exchange.call_count == 2
+    assert sharepoint_exchange.call_count == 1
+    sharepoint_exchange.return_value = {"access_token": "sharepoint", "expires_in": 3600}
+    sharepoint.invalidate("same-assertion")
+    recovered = await sharepoint.acquire("same-assertion", 5000)
+    assert recovered.value.get_secret_value() == "sharepoint"
+    assert sharepoint_exchange.call_count == 2
+    assert graph_exchange.call_count == 2
+
+
 @pytest.fixture
 def blocked_exchange():
     entered, release = threading.Event(), threading.Event()
