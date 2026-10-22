@@ -33,8 +33,9 @@ Provide Microsoft 365 access through a thin Graph MCP, avoiding the Work IQ File
 
 ```mermaid
 flowchart LR
-    U[Open WebUI] -->|MCP calls and per-user OAuth token| L[LiteLLM]
-    L -->|Streamable HTTP| M[Graph MCP]
+    U[Open WebUI] -->|MCP calls with per-user identity| L[LiteLLM]
+    L -->|Per-user OAuth sign-in and refresh| E
+    L -->|Streamable HTTP + user's MCP token| M[Graph MCP]
     M -->|Delegated Graph token| G[Microsoft Graph]
     U -->|Terminal tools and image reads| T[Open Terminal]
     T <-->|Scoped file transfer URLs| S[Microsoft file storage]
@@ -43,7 +44,7 @@ flowchart LR
     M -->|OBO| E[Microsoft Entra]
 ```
 
-Open WebUI coordinates tool calls and model input. LiteLLM routes MCP calls and provides gateway admission. The MCP performs Graph requests, token exchange, response selection, and transfer preparation. Optional site-settings tools use SharePoint REST with a separately acquired delegated resource token and a fixed configured site URL. The terminal owns document parsing, creation, editing, rendering, and local analysis. See [SharePoint publishing](sharepoint-publishing.md) for the 0.4.0 implementation and remaining live acceptance.
+Open WebUI coordinates tool calls and model input. LiteLLM routes MCP calls, provides gateway admission, and owns each user's Microsoft connection. The MCP performs Graph requests, token exchange, response selection, and transfer preparation. Optional site-settings tools use SharePoint REST with a separately acquired delegated resource token and a fixed configured site URL. The terminal owns document parsing, creation, editing, rendering, and local analysis. See [SharePoint publishing](sharepoint-publishing.md) for the 0.4.0 implementation and remaining live acceptance.
 
 The MCP does not call terminal tools merely because both toolsets are in a chat. The model coordinates them using explicit transfer descriptors and file references. A path in the terminal is never assumed to exist on the MCP server.
 
@@ -51,11 +52,55 @@ No server-side LLM, document editor, browser engine, vector database, background
 
 ## 3. Authentication decision
 
-### 3.1 Default: separate MCP authorization, one OBO exchange
+### 3.1 Default: gateway-managed per-user OAuth, one OBO exchange
 
-Use Open WebUI's static OAuth connection to obtain an Entra token issued for the Graph MCP. Route it through LiteLLM using `oauth_delegate`. The MCP validates the token and exchanges it for delegated Graph access.
+LiteLLM 1.107 or later is the OAuth client for the Graph MCP API. With `auth_type: oauth2` and `oauth2_flow: authorization_code`, it runs Entra's authorization-code flow with PKCE using its own confidential client registration, stores each user's token under that user's LiteLLM `user_id`, refreshes it, and sends it as the upstream bearer. The MCP validates the token and exchanges it for delegated Graph access as in the legacy design. Only the token's `azp` differs, so no server change is needed once the LiteLLM client is in `allowedClientIds`. WebUI no longer performs Microsoft OAuth for this connection. [LiteLLM MCP OAuth](https://docs.litellm.ai/docs/mcp_oauth)
 
-LiteLLM documents separate headers for gateway admission and the upstream token. Its 1.100.0 source includes `oauth_delegate`; Open WebUI 0.11.3 includes static OAuth and custom connection headers. This establishes available building blocks, not a tested complete flow. [LiteLLM routing documentation](https://docs.litellm.ai/docs/mcp_oauth_passthrough), [LiteLLM auth types](https://github.com/BerriAI/litellm/blob/v1.100.0/litellm/types/mcp.py), [Open WebUI headers](https://github.com/open-webui/open-webui/blob/v0.11.3/backend/open_webui/utils/tools.py#L127)
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as Open WebUI backend
+    participant Entra
+    participant Proxy as LiteLLM
+    participant MCP as Graph MCP
+    participant Graph
+    User->>Proxy: Connect Microsoft on LiteLLM's connect page
+    Proxy->>Entra: Authorization code flow with PKCE + LiteLLM client secret
+    Entra-->>Proxy: MCP-audience user token and refresh token
+    Note over Proxy: Stored and refreshed per LiteLLM user
+    UI->>Proxy: MCP call with per-user LiteLLM identity
+    Proxy->>MCP: Stored MCP-audience bearer
+    MCP->>MCP: Validate issuer, tenant, audience, client, user, scope
+    MCP->>Entra: OBO assertion + MCP credential
+    Entra-->>MCP: Delegated Graph token
+    MCP->>Graph: Graph request
+    Graph-->>MCP: Result
+    MCP-->>Proxy: MCP result
+    Proxy-->>UI: MCP result
+```
+
+Entra has no Dynamic Client Registration, so LiteLLM uses a pre-registered client with explicit authorization/token endpoints and scopes (`api://<MCP_CLIENT_ID>/access_as_user` plus `offline_access`). The RFC 8707 `resource` parameter is omitted: Entra derives the audience from the scope and can reject a conflicting `resource` (`AADSTS9010010`). See [setup §5.1](setup.md#51-gateway-managed-oauth-default).
+
+User isolation now partly depends on the gateway. LiteLLM must select the stored token by the calling end user's identity, so WebUI must reach LiteLLM with a per-user identity rather than one shared key. The MCP still attributes each Graph operation to the validated Entra user, but cannot tell whether LiteLLM chose the right user's token.
+
+The design uses two new logical app roles in addition to the existing WebUI SSO registration. The legacy flow uses a WebUI client in place of the LiteLLM client:
+
+| Registration | Role | Credentials and permissions |
+| --- | --- | --- |
+| Existing WebUI SSO | Sign into WebUI | Existing configuration remains separate |
+| LiteLLM Microsoft-tools OAuth client | Interactive confidential client (default) | Secret held by LiteLLM; Web redirect URI `https://<litellm-host>/callback`; admin-consented delegated permission to the MCP API scope |
+| WebUI Microsoft-tools OAuth client | Interactive confidential client (legacy) | Secret held by WebUI backend; redirect URI from its actual MCP OAuth callback; permission to the MCP API scope |
+| Graph MCP API | Protected resource and OBO confidential client | Exposes a delegated scope such as `access_as_user`; Graph delegated permissions; credential held only by MCP |
+
+Use a tenant-specific authority for the initial internal, single-tenant deployment. Multi-user within that tenant is required; multi-tenant SaaS is not.
+
+The OAuth client requests the exposed MCP scope plus the refresh scope needed by its OAuth implementation. The MCP requests `https://graph.microsoft.com/.default` during OBO, representing its consented delegated Graph scopes. Configure downstream consent before relying on noninteractive exchange. Microsoft requires the assertion audience to identify the app performing OBO. [Microsoft OBO protocol and consent](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-on-behalf-of-flow)
+
+### 3.2 Legacy: WebUI OAuth through `oauth_delegate`
+
+Open WebUI's static OAuth connection obtains an Entra token issued for the Graph MCP and routes it through LiteLLM using `oauth_delegate`. The MCP validates the token and exchanges it for delegated Graph access. This remains supported during migration.
+
+LiteLLM documents separate headers for gateway admission and the upstream token. Its 1.100.0 source includes `oauth_delegate`; Open WebUI 0.11.3 includes static OAuth and custom connection headers. [LiteLLM routing documentation](https://docs.litellm.ai/docs/mcp_oauth_passthrough), [LiteLLM auth types](https://github.com/BerriAI/litellm/blob/v1.100.0/litellm/types/mcp.py), [Open WebUI headers](https://github.com/open-webui/open-webui/blob/v0.11.3/backend/open_webui/utils/tools.py#L127)
 
 ```mermaid
 sequenceDiagram
@@ -79,57 +124,35 @@ sequenceDiagram
     Proxy-->>UI: MCP result
 ```
 
-This proposal uses two new logical app roles, normally implemented as two registrations, in addition to the existing WebUI SSO registration:
+A connection-wide gateway key admits the WebUI integration, not necessarily the individual Microsoft user. In this flow Entra user isolation does not depend on per-user LiteLLM keys, because WebUI supplies each user's token.
 
-| Registration | Role | Credentials and permissions |
+### 3.3 Credential placement
+
+| Hop/component | Default (gateway-managed) | Legacy (`oauth_delegate`) |
 | --- | --- | --- |
-| Existing WebUI SSO | Sign into WebUI | Existing configuration remains separate |
-| WebUI Microsoft-tools OAuth client | Interactive confidential client | Secret held by WebUI backend; redirect URI from its actual MCP OAuth callback; permission to the MCP API scope |
-| Graph MCP API | Protected resource and OBO confidential client | Exposes a delegated scope such as `access_as_user`; Graph delegated permissions; credential held only by MCP |
+| WebUI → LiteLLM | Per-user LiteLLM key or identity only | `Authorization: Bearer <MCP-user-token>` plus separate `x-litellm-api-key: Bearer <gateway-key>` |
+| LiteLLM → Entra | LiteLLM client secret, authorization code and refresh token | None |
+| LiteLLM → MCP | Stored MCP-user-token only | MCP-user-token only; gateway admission key is not forwarded |
+| MCP → Entra | MCP client credential and incoming user assertion | Same |
+| MCP → Graph | Graph-user-token | Same |
+| Terminal transfer | File-scoped Microsoft URL or temporary artifact ticket, never an Entra secret or broad Graph token | Same |
 
-Use a tenant-specific authority for the initial internal, single-tenant deployment. Multi-user within that tenant is required; multi-tenant SaaS is not.
+See [the example LiteLLM entry](../deploy/litellm.example.yaml) for both forms. Use the single-server client route `https://<litellm-host>/msgraph/mcp`. The OAuth client's credentials and the MCP OBO credential have different roles and are not copies of one secret. Attribute Graph operations using the validated tenant/user identity at the MCP.
 
-The WebUI OAuth client requests the exposed MCP scope plus the identity/refresh scopes needed by its OAuth implementation. The MCP requests `https://graph.microsoft.com/.default` during OBO, representing its consented delegated Graph scopes. Configure downstream consent before relying on noninteractive exchange. Microsoft requires the assertion audience to identify the app performing OBO. [Microsoft OBO protocol and consent](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-on-behalf-of-flow)
-
-### 3.2 Credential placement
-
-| Hop/component | Credential |
-| --- | --- |
-| WebUI → LiteLLM | `Authorization: Bearer <MCP-user-token>` |
-| WebUI → LiteLLM | Separate custom `x-litellm-api-key: Bearer <gateway-key>` |
-| LiteLLM → MCP | MCP-user-token only; gateway admission key is not forwarded |
-| MCP → Entra | MCP client credential and incoming user assertion |
-| MCP → Graph | Graph-user-token |
-| Terminal transfer | File-scoped Microsoft URL or temporary artifact ticket, never an Entra secret or broad Graph token |
-
-Illustrative LiteLLM settings, not a deployable configuration:
-
-```yaml
-mcp_servers:
-  msgraph:
-    url: "https://<internal-graph-mcp>/mcp"
-    transport: "http"
-    auth_type: oauth_delegate
-```
-
-Use the single-server client route `https://<litellm-host>/msgraph/mcp`. No Entra client ID/secret is required in this LiteLLM MCP entry. The WebUI OAuth client's credentials and MCP OBO credentials have different roles and are not copies of one secret.
-
-A connection-wide gateway key admits the WebUI integration, not necessarily the individual Microsoft user. Attribute Graph operations using the validated tenant/user identity at the MCP. Per-user LiteLLM keys can be added if the existing deployment already provides them; Entra user isolation must not depend on that feature.
-
-### 3.3 Discovery, validation, and refresh
+### 3.4 Discovery, validation, and refresh
 
 - Publish OAuth protected-resource metadata and the tenant authorization-server reference. The public resource identity must remain stable through the proxy.
 - Document the mapping between the public MCP resource URL, Entra App ID URI, and expected token `aud`. Do not derive accepted audiences from arbitrary request headers.
-- Verify Entra compatibility with Open WebUI's OAuth resource-indicator handling and explicit scopes. If Entra requires WebUI's “Omit resource” setting, document and test that interoperability choice. Do not assume that an RFC 8707 URL directly becomes an Entra audience.
+- Do not send an RFC 8707 `resource` to Entra: leave LiteLLM's `upstream_resource` unset, or use WebUI's “Omit resource” setting in the legacy flow. Do not assume that an RFC 8707 URL directly becomes an Entra audience.
 - Check signature, issuer, expiry, tenant, configured audience, delegated scope, and authorized client as applicable. Reject app-only and wrong-audience tokens.
 - Never accept a Graph-audience token as MCP authentication. Proxying an MCP-audience token through LiteLLM is distinct from passing a Graph token through an MCP. [MCP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)
-- WebUI stores and refreshes its per-user OAuth connection. MCP caches Graph tokens through MSAL, segregated by tenant, user/assertion, client, and resource/scopes. Cache an assertion hash, not the raw assertion as a loggable key.
-- Return actionable reauthorization/claims challenges. Verify propagation through LiteLLM and WebUI; do not loop silently on failed OBO or fall back to application permissions.
+- LiteLLM (legacy: WebUI) stores and refreshes the per-user OAuth connection. Each refreshed token is a new assertion and is exchanged once more. MCP caches Graph tokens through MSAL, segregated by tenant, user/assertion, client, and resource/scopes. Cache an assertion hash, not the raw assertion as a loggable key.
+- Return actionable reauthorization/claims challenges. Verify propagation through LiteLLM and WebUI; a refresh grant cannot satisfy a claims challenge, so the user reconnects. Do not loop silently on failed OBO or fall back to application permissions.
 - An optional Copilot scope or unavailable feature must not make core tools unusable. Start with core consent; add optional consent separately if tenant policy requires it. If an optional consent causes acquisition failure, treat it as a configuration issue and repair the scope bundle rather than denying unrelated services.
 
 The initial compatibility gate includes discovery without a user token, first login, tool listing, first call, refresh, disconnect/reconnect, and user isolation. Do not interpret a successful metadata check as successful authorization.
 
-### 3.4 Alternative if gateway-owned OBO becomes necessary
+### 3.5 Alternative if gateway-owned OBO becomes necessary
 
 LiteLLM 1.100.0 also contains `token_exchange_profile: entra_obo`. A token issued for a LiteLLM API registration can be exchanged for an MCP token, followed by MCP-to-Graph OBO. This is a documented fallback design, not the default; it adds an API registration role and another exchange without a current requirement for them. [LiteLLM OBO](https://docs.litellm.ai/docs/mcp_obo_auth)
 

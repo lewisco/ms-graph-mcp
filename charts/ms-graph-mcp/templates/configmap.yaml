@@ -20,6 +20,7 @@ data:
   GRAPH_MCP_OBO_MAX_CONCURRENT_EXCHANGES: {{ .Values.config.oboMaxConcurrentExchanges | quote }}
   GRAPH_MCP_MAX_REQUEST_BODY_BYTES: {{ .Values.config.maxRequestBodyBytes | quote }}
   GRAPH_MCP_SHAREPOINT_SITE_URL: {{ .Values.config.sharepointSiteUrl | quote }}
+  GRAPH_MCP_AUDIT_LOG: {{ .Values.config.auditLog | quote }}
   {{- if .Values.enterpriseCA.enabled }}
   GRAPH_MCP_EXTRA_CA_FILE: /etc/ms-graph-mcp/ca/enterprise-ca.pem
   {{- end }}

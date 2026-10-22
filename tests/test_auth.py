@@ -9,6 +9,9 @@ from ms_graph_mcp.auth import EntraVerifier
 from ms_graph_mcp.errors import AuthFailure
 from ms_graph_mcp.obo import GraphToken
 
+GATEWAY_CLIENT = "66666666-6666-4666-8666-666666666666"
+UNLISTED_CLIENT = "77777777-7777-4777-8777-777777777777"
+
 
 @pytest.fixture
 def obo():
@@ -31,10 +34,49 @@ async def test_valid_delegated_token(settings, jwks, token, obo):
 
 
 @pytest.mark.parametrize(
+    "extra",
+    [
+        {},
+        # Entra omits OIDC scopes from resource tokens, but extra scopes must not matter.
+        {"scp": "access_as_user offline_access"},
+        # Clients that declare CP1 or satisfy CA auth contexts get these claims.
+        {"xms_cc": ["CP1"], "acrs": ["c1"]},
+        {"name": "Test User", "preferred_username": "test@example.com", "uti": "x", "rh": "y"},
+    ],
+)
+async def test_gateway_oauth2_client_token_accepted(settings, jwks, token, obo, extra):
+    incoming = token(azp=GATEWAY_CLIENT, **extra)
+    identity = await EntraVerifier(settings, obo, jwks=jwks).verify_token(incoming)
+    assert identity.client_id == GATEWAY_CLIENT
+    assert identity.subject == "44444444-4444-4444-8444-444444444444"
+    obo.acquire.assert_awaited_once()
+    assert obo.acquire.await_args.args[0] == incoming
+
+
+async def test_gateway_refreshed_token_is_exchanged_again(settings, jwks, token, obo):
+    verifier = EntraVerifier(settings, obo, jwks=jwks)
+    first = token(azp=GATEWAY_CLIENT)
+    now = int(time.time())
+    refreshed = token(azp=GATEWAY_CLIENT, iat=now, nbf=now, exp=now + 4000)
+    for incoming in (first, refreshed):
+        assert (await verifier.verify_token(incoming)).client_id == GATEWAY_CLIENT
+    assert [call.args[0] for call in obo.acquire.await_args_list] == [first, refreshed]
+
+
+async def test_unlisted_oauth2_client_rejected(settings, jwks, token, obo):
+    verifier = EntraVerifier(settings, obo, jwks=jwks)
+    assert await verifier.verify_token(token(azp=UNLISTED_CLIENT)) is None
+    obo.acquire.assert_not_called()
+
+
+@pytest.mark.parametrize(
     "overrides",
     [
         {"aud": "https://graph.microsoft.com"},
         {"aud": ["22222222-2222-4222-8222-222222222222"]},
+        # v1-form audience/issuer, as issued when the API manifest is not set to v2 tokens.
+        {"aud": "api://22222222-2222-4222-8222-222222222222"},
+        {"iss": "https://sts.windows.net/11111111-1111-4111-8111-111111111111/"},
         {"iss": "https://login.microsoftonline.com/common/v2.0"},
         {"tid": "55555555-5555-4555-8555-555555555555"},
         {"azp": "55555555-5555-4555-8555-555555555555"},

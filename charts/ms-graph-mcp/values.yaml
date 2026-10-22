@@ -25,6 +25,8 @@ config:
   maxRequestBodyBytes: 60000
   # Optional fixed destination for site navigation/theme/homepage tools.
   sharepointSiteUrl: ""
+  # One JSON line per Graph tool call: user oid/username, client, tool and outcome only.
+  auditLog: false
 
 credentials:
   existingSecret: ""

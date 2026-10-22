@@ -80,12 +80,13 @@ def test_ha_and_secret_contract(replicas, monkeypatch):
     config = resources["ConfigMap"]["data"]
     assert "GRAPH_MCP_CLIENT_SECRET" not in config
     assert config["GRAPH_MCP_OBO_MAX_CONCURRENT_EXCHANGES"] == "4"
+    assert config["GRAPH_MCP_AUDIT_LOG"] == "false"
     assert "ms-graph-mcp.ai.svc:8000" in json.loads(config["GRAPH_MCP_ALLOWED_HOSTS"])
     for key, value in config.items():
         if key != "GRAPH_MCP_EXTRA_CA_FILE":
             monkeypatch.setenv(key, value)
     monkeypatch.setenv("GRAPH_MCP_CLIENT_SECRET", "test-only")
-    Settings(_env_file=None)  # Chart serializations must be accepted by the running app.
+    assert Settings(_env_file=None).audit_log is False  # Chart serializations must parse.
 
 
 def test_ca_mount_options_and_metadata_route():

@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 from unittest.mock import Mock
 
 import httpx
@@ -8,6 +9,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from ms_graph_mcp.app import create_app
+from ms_graph_mcp.audit import LOGGER_NAME
 from ms_graph_mcp.auth import EntraVerifier
 from ms_graph_mcp.obo import OboClient
 
@@ -51,6 +53,19 @@ def server(settings, jwks, request):
         yield client, requests, upstream, exchange, obo, http
     assert http.is_closed
     assert not obo._cache
+
+
+@pytest.fixture
+def audit_records():
+    logger = logging.getLogger(LOGGER_NAME)
+    saved = logger.handlers[:], logger.level, logger.propagate
+    records = []
+    capture = logging.Handler()
+    capture.emit = lambda record: records.append(json.loads(record.getMessage()))
+    logger.addHandler(capture)
+    yield records
+    logger.handlers[:], logger.propagate = saved[0], saved[2]
+    logger.setLevel(saved[1])
 
 
 def rpc(client, token, method, params=None, **headers):
@@ -175,10 +190,11 @@ def test_mcp_outer_limit_rejects_oversize_before_operation(server, token, settin
 
 
 @pytest.fixture
-def site_server(settings, jwks):
+def site_server(settings, jwks, request):
     settings = settings.model_copy(
         update={
             "sharepoint_site_url": "https://tenant.sharepoint.com/sites/Hub",
+            **getattr(request, "param", {}),
         }
     )
     requests = []
@@ -301,6 +317,34 @@ def test_sharepoint_consent_failure_does_not_disable_graph(
     assert requests[-1].url.host == "graph.microsoft.com"
 
 
+@pytest.mark.parametrize("site_server", [{"audit_log": True}], indirect=True)
+def test_audit_log_records_sharepoint_tools(audit_records, site_server, token):
+    client, _, _, _, site_exchange = site_server
+    call = {"name": "sharepoint_read", "arguments": {"operation": "settings"}}
+    read_payload(rpc(client, token(), "tools/call", call))
+    site_exchange.return_value = {"error": "consent_required", "error_description": "secret"}
+    read_payload(rpc(client, token(oid="55555555-5555-4555-8555-555555555555"), "tools/call", call))
+    for record in audit_records:
+        assert record.pop("duration_ms") >= 0
+    user = {"azp": "33333333-3333-4333-8333-333333333333"}
+    assert audit_records == [
+        {
+            "event": "tool_call",
+            "tool": "sharepoint_read",
+            "outcome": "success",
+            "oid": "44444444-4444-4444-8444-444444444444",
+            **user,
+        },
+        {
+            "event": "tool_call",
+            "tool": "sharepoint_read",
+            "outcome": "auth_error",
+            "oid": "55555555-5555-4555-8555-555555555555",
+            **user,
+        },
+    ]
+
+
 def test_sharepoint_rejects_irrelevant_write_fields_before_call(site_server, token):
     client, requests, _, _, site_exchange = site_server
     result, _ = read_payload(
@@ -393,6 +437,84 @@ def test_two_users_never_share_graph_token(server, token):
     auths = [request.headers["authorization"] for request in requests]
     assert auths[0] == auths[2] != auths[1]
     assert exchange.call_count == 2
+
+
+def test_gateway_oauth2_client_token_reaches_graph(server, token):
+    client, requests, _, exchange, _, _ = server
+    incoming = token(azp="66666666-6666-4666-8666-666666666666", scp="access_as_user")
+    result, payload = read_payload(call_profile(client, incoming))
+    assert not result.get("isError")
+    assert payload["data"]["displayName"] == "Test User"
+    assert requests[0].headers["authorization"].endswith("-44444444-4444-4444-8444-444444444444")
+    exchange.assert_called_once_with(incoming)
+
+
+def test_unlisted_oauth2_client_rejected_before_exchange(server, token, settings):
+    client, requests, _, exchange, _, _ = server
+    response = call_profile(client, token(azp="77777777-7777-4777-8777-777777777777"))
+    assert response.status_code == 401
+    assert settings.metadata_url in response.headers["www-authenticate"]
+    exchange.assert_not_called()
+    assert not requests
+
+
+def test_audit_log_is_off_by_default(audit_records, server, token):
+    client, *_ = server
+    read_payload(call_profile(client, token()))
+    assert audit_records == []
+
+
+@pytest.mark.parametrize("server", [{"audit_log": True}], indirect=True)
+def test_audit_log_records_identity_tool_and_outcome(audit_records, server, token):
+    client, _, upstream, *_ = server
+    incoming = token(
+        azp="66666666-6666-4666-8666-666666666666", preferred_username="test@example.com"
+    )
+    read_payload(call_profile(client, incoming))
+    upstream[0] = httpx.Response(403, text="secret-detail")
+    read_payload(call_profile(client, incoming))
+    read_payload(call_profile(client, token(upn="upn@example.com"), {"path": "/applications"}))
+    read_payload(
+        rpc(
+            client,
+            token(),
+            "tools/call",
+            {"name": "graph_continue", "arguments": {"continuation": "forged"}},
+        )
+    )
+    rpc(client, incoming, "tools/call", {"name": "graph_capabilities"})
+    assert [r.pop("duration_ms") >= 0 for r in audit_records] == [True] * 4
+    identity = {"oid": "44444444-4444-4444-8444-444444444444"}
+    gateway = {**identity, "username": "test@example.com"}
+    gateway["azp"] = "66666666-6666-4666-8666-666666666666"
+    assert audit_records == [
+        {"event": "tool_call", "tool": "graph_read", "outcome": "success", **gateway},
+        {
+            "event": "tool_call",
+            "tool": "graph_read",
+            "outcome": "graph_error",
+            "graph_status": 403,
+            **gateway,
+        },
+        {
+            "event": "tool_call",
+            "tool": "graph_read",
+            "outcome": "invalid_operation",
+            **identity,
+            "username": "upn@example.com",
+            "azp": "33333333-3333-4333-8333-333333333333",
+        },
+        {
+            "event": "tool_call",
+            "tool": "graph_continue",
+            "outcome": "invalid_operation",
+            **identity,
+            "azp": "33333333-3333-4333-8333-333333333333",
+        },
+    ]
+    logged = json.dumps(audit_records)
+    for secret in (incoming, "graph-4444", "Bearer", "/applications", "/me", "forged", "secret"):
+        assert secret not in logged
 
 
 def test_wrong_scope_and_bad_token(server, token):

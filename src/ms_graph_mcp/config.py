@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     http_timeout_seconds: float = Field(default=15, ge=1, le=120)
     obo_cache_entries: int = Field(default=128, ge=1, le=4096)
     obo_max_concurrent_exchanges: int = Field(default=4, ge=1, le=32)
+    audit_log: bool = False
     extra_ca_file: FilePath | None = None
     max_request_body_bytes: int = Field(default=60000, ge=60000, le=2000000)
     sharepoint_site_url: str | None = None

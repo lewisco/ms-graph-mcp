@@ -19,6 +19,7 @@ List-valued environment variables use JSON arrays, such as `["127.0.0.1:8000"]`.
 | `GRAPH_MCP_HTTP_TIMEOUT_SECONDS` | `config.httpTimeoutSeconds` | `15`; range 1–120 seconds for Microsoft network operations; not a complete tool-call deadline |
 | `GRAPH_MCP_OBO_CACHE_ENTRIES` | `config.oboCacheEntries` | `128`; range 1–4096; bounds successful-token and sanitized-failure caches separately, per replica |
 | `GRAPH_MCP_OBO_MAX_CONCURRENT_EXCHANGES` | `config.oboMaxConcurrentExchanges` | `4`; range 1–32 distinct simultaneous exchanges, per replica |
+| `GRAPH_MCP_AUDIT_LOG` | `config.auditLog` | `false`; when `true`, writes one JSON line per Graph tool call to stdout (see below) |
 | `GRAPH_MCP_EXTRA_CA_FILE` | Generated mount from `enterpriseCA` | Unset; optional existing PEM file that augments public roots for outbound Microsoft TLS |
 | `GRAPH_MCP_MAX_REQUEST_BODY_BYTES` | `config.maxRequestBodyBytes` | `60000`; range 60,000–2,000,000; maximum outbound compact UTF-8 JSON or HTML payload |
 | `GRAPH_MCP_SHAREPOINT_SITE_URL` | `config.sharepointSiteUrl` | Unset/empty disables site settings; otherwise one HTTPS `tenant.sharepoint.com` site URL with no credentials, port, query or fragment; path segments use ASCII letters, digits, `.`, `_`, `~`, `-` and cannot be `.` or `..` |
@@ -26,6 +27,16 @@ List-valued environment variables use JSON arrays, such as `["127.0.0.1:8000"]`.
 For the public URL `https://litellm.example.com/msgraph/mcp`, use that entire URL as `resourceUrl`. The incoming Entra token's audience is still the MCP API's client UUID. The local `/mcp` endpoint and the public gateway URL have different roles; see the [resource mapping](setup.md#2-resource-and-token-mapping).
 
 The application validates settings at startup. Changing environment variables, credentials or CA files requires a process restart; use a rolling restart on Kubernetes. Keep real credentials in `.env` only for local development or in your deployment's secret management system. Never put secret values into Helm values files.
+
+## Audit logging
+
+With `GRAPH_MCP_AUDIT_LOG=true`, each call to a tool that reaches Microsoft (`graph_read`, `graph_write`, `graph_continue`, the three transfer tools, `sharepoint_read` and `sharepoint_write`) writes one JSON line to stdout through the `ms_graph_mcp.audit` logger, for example:
+
+```json
+{"event":"tool_call","tool":"graph_write","outcome":"graph_error","graph_status":403,"oid":"<user object id>","username":"user@example.com","azp":"<OAuth client id>","duration_ms":412}
+```
+
+`outcome` is `success`, `graph_error` (with `graph_status`), `auth_error` (a SharePoint token exchange needing consent or sign-in), `invalid_operation`, `authorization_required` or `error`. `username` is the token's `preferred_username`, else `upn`, and is omitted when absent. `azp` identifies the OAuth client, such as LiteLLM or the legacy WebUI client. Records never contain tokens, Graph paths, queries, bodies, headers, continuation or transfer handles, URLs or response data. `graph_capabilities` and `graph_describe` touch no Microsoft data and are not recorded. Requests rejected before a tool runs (HTTP 401/403/503) are not tool calls and are not recorded here. Usernames are personal data; apply your log retention policy.
 
 ## Deployment settings
 

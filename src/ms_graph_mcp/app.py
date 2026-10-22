@@ -1,6 +1,7 @@
 """ASGI factory: uvicorn ms_graph_mcp.app:create_app --factory."""
 
 import json
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Literal, get_args
@@ -16,6 +17,7 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from ms_graph_mcp.audit import AuditLog
 from ms_graph_mcp.auth import DelegatedAccessToken, EntraVerifier
 from ms_graph_mcp.catalog import OPERATIONS, describe
 from ms_graph_mcp.config import Settings
@@ -48,6 +50,7 @@ def create_app(
     )
     graph = GraphClient(http, obo)
     gateway = Gateway(graph, settings)
+    audit = AuditLog(settings.audit_log)
     site_obo = None
     sharepoint = None
     if settings.sharepoint_site_url:
@@ -70,7 +73,7 @@ def create_app(
 
     mcp = MCPServer(
         "ms-graph-mcp",
-        version="0.4.0",
+        version="0.5.0",
         instructions=(
             "Delegated Microsoft 365 operations: discover services with graph_capabilities and "
             "routes with graph_describe. Use graph_read for reads, graph_write for mutations, "
@@ -99,9 +102,11 @@ def create_app(
             content=[TextContent(type="text", text=json.dumps(value, separators=(",", ":")))],
         )
 
-    async def execute(operation):
+    async def execute(tool, operation):
+        started = time.monotonic()
         identity = get_access_token()
         if not isinstance(identity, DelegatedAccessToken):
+            audit.tool_call(tool, None, "authorization_required", started)
             return tool_result(
                 {
                     "error": {
@@ -111,9 +116,13 @@ def create_app(
                 },
                 True,
             )
+        outcome, graph_status = "error", None
         try:
-            return tool_result(await operation(identity))
+            result = tool_result(await operation(identity))
+            outcome = "success"
+            return result
         except AuthFailure as exc:
+            outcome = "auth_error"
             # SharePoint consent is acquired lazily within its tool call so a missing
             # optional permission cannot disable unrelated Graph tools. MCP clients
             # cannot automatically satisfy a claims challenge in a tool result.
@@ -129,6 +138,7 @@ def create_app(
                 True,
             )
         except GraphFailure as exc:
+            outcome, graph_status = "graph_error", exc.status
             return tool_result(
                 {
                     "status": exc.status,
@@ -139,6 +149,7 @@ def create_app(
                 True,
             )
         except (ValueError, KeyError, TypeError) as exc:
+            outcome = "invalid_operation"
             return tool_result(
                 {
                     "error": {
@@ -150,6 +161,8 @@ def create_app(
                 },
                 True,
             )
+        finally:
+            audit.tool_call(tool, identity, outcome, started, graph_status)
 
     @mcp.tool(annotations=readonly)
     def graph_capabilities() -> dict:
@@ -248,7 +261,7 @@ def create_app(
                 options["$select"] = ",".join(select)
             return await gateway.request(identity, method, path, options, body, headers)
 
-        return await execute(operation)
+        return await execute("graph_read", operation)
 
     @mcp.tool(annotations=write)
     async def graph_write(
@@ -265,15 +278,18 @@ def create_app(
         retry an uncertain write. Presence writes target your own object ID.
         """
         return await execute(
+            "graph_write",
             lambda identity: gateway.request(
                 identity, method, path, query, body, headers, read_only=False, html=html
-            )
+            ),
         )
 
     @mcp.tool(annotations=readonly)
     async def graph_continue(continuation: str) -> CallToolResult:
         """Read the next page from an owner-bound handle; never replays the original mutation."""
-        return await execute(lambda identity: gateway.continue_page(identity, continuation))
+        return await execute(
+            "graph_continue", lambda identity: gateway.continue_page(identity, continuation)
+        )
 
     @mcp.tool(annotations=write)
     async def graph_prepare_transfer(
@@ -289,7 +305,8 @@ def create_app(
         transfers bytes without Graph authorization.
         """
         return await execute(
-            lambda identity: gateway.prepare(identity, direction, path, filename, size, etag)
+            "graph_prepare_transfer",
+            lambda identity: gateway.prepare(identity, direction, path, filename, size, etag),
         )
 
     @mcp.tool(annotations=readonly)
@@ -300,7 +317,8 @@ def create_app(
         size and destination drive. This does not prove byte-for-byte integrity.
         """
         return await execute(
-            lambda identity: gateway.transfer_status(identity, transfer, completed_item_path)
+            "graph_transfer_status",
+            lambda identity: gateway.transfer_status(identity, transfer, completed_item_path),
         )
 
     @mcp.tool(annotations=write)
@@ -310,7 +328,10 @@ def create_app(
         """Cancel a native upload session at Microsoft. Download URL
         revocation/retention extension is not supported.
         """
-        return await execute(lambda identity: gateway.transfer_manage(identity, transfer, action))
+        return await execute(
+            "graph_transfer_manage",
+            lambda identity: gateway.transfer_manage(identity, transfer, action),
+        )
 
     def configured_sharepoint():
         if sharepoint is None:
@@ -342,7 +363,7 @@ def create_app(
                 return await client.read_themes(identity)
             return await client.read_settings(identity)
 
-        return await execute(run)
+        return await execute("sharepoint_read", run)
 
     @mcp.tool(annotations=write)
     async def sharepoint_write(
@@ -416,7 +437,7 @@ def create_app(
                 url=url,
             )
 
-        return await execute(run)
+        return await execute("sharepoint_write", run)
 
     @mcp.custom_route("/healthz", methods=["GET"])
     async def health(request: Request) -> JSONResponse:

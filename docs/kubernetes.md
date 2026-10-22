@@ -147,14 +147,14 @@ No sticky sessions, shared refresh-token cache, or PVC is required by the curren
 
 ## 5. LiteLLM, ingress and network policy
 
-With the example release in namespace `ai`, configure LiteLLM with:
+With the example release in namespace `ai`, point LiteLLM at the Service; take the authentication fields from [the example LiteLLM entry](../deploy/litellm.example.yaml) and [setup §5](setup.md#5-litellm-and-webui):
 
 ```yaml
 mcp_servers:
   msgraph:
     url: https://ms-graph-mcp.ai.svc:8000/mcp
     transport: http
-    auth_type: oauth_delegate
+    auth_type: oauth2  # gateway-managed; legacy deployments use oauth_delegate
 ```
 
 The chart adds its Service DNS names to the allowed Host list. For a custom cluster domain or proxy-rewritten Host, add the exact name and port through `config.extraAllowedHosts`. The Service has no session affinity. WebUI still connects to the public HTTPS LiteLLM resource URL from `config.resourceUrl`.

@@ -12,6 +12,8 @@ RESOURCE = "22222222-2222-4222-8222-222222222222"
 CLIENT = "33333333-3333-4333-8333-333333333333"
 USER = "44444444-4444-4444-8444-444444444444"
 OTHER_USER = "55555555-5555-4555-8555-555555555555"
+# LiteLLM's gateway-managed oauth2 client, allowed alongside the legacy WebUI client.
+GATEWAY_CLIENT = "66666666-6666-4666-8666-666666666666"
 
 
 @pytest.fixture
@@ -21,7 +23,7 @@ def settings():
         tenant_id=TENANT,
         client_id=RESOURCE,
         client_secret="test-secret-never-log",
-        allowed_client_ids=[CLIENT],
+        allowed_client_ids=[CLIENT, GATEWAY_CLIENT],
         resource_url="https://gateway.example/msgraph/mcp",
         allowed_hosts=["testserver", "mcp.internal:8000"],
     )

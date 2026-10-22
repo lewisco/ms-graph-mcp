@@ -10,6 +10,7 @@ Native drive transfers target 250 MB. Shared staging for large transcripts/JSON,
 
 ## Documentation
 
+- [Version 0.5.0 rollout](docs/rollout-0.5.0.md): gateway-managed LiteLLM OAuth and optional audit logging.
 - [SharePoint publishing and 0.4.0 rollout](docs/sharepoint-publishing.md): page/layout operations, site settings, configuration, permissions and live acceptance.
 - [User guide](docs/usage.md): connect Microsoft, use the available tools, and understand errors.
 - [Version 0.3.0 rollout](docs/rollout-0.3.0.md): OneNote, presence and additional delegated permissions.
@@ -59,7 +60,7 @@ Enterprise CA bundles can be mounted from an existing ConfigMap or Secret; the a
 
 The design uses Open WebUI 0.11.3, LiteLLM 1.100.0, and Open Terminal 0.11.34 as the initial compatibility baseline. Runtime/package versions supplied by the user are inputs, not installation results.
 
-The proposed default is a separate Microsoft connection in Open WebUI, LiteLLM `oauth_delegate` routing, and an Entra OBO exchange in the Graph MCP. This avoids coupling Graph access to Open WebUI's existing SSO registration.
+The default is a per-user Microsoft connection managed by LiteLLM (`auth_type: oauth2`, `authorization_code`) and an Entra OBO exchange in the Graph MCP. The earlier Open WebUI connection with LiteLLM `oauth_delegate` routing remains supported as a legacy option. Both avoid coupling Graph access to Open WebUI's existing SSO registration.
 
 Document creation and rendering run in the terminal. The Graph MCP remains a small gateway with explicit controls over returned content and temporary file transfer.
 

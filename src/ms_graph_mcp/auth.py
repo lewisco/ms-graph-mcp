@@ -16,6 +16,7 @@ from ms_graph_mcp.tls import create_ssl_context
 class DelegatedAccessToken(AccessToken):
     token: str = Field(repr=False, exclude=True)
     graph_token: SecretStr = Field(repr=False, exclude=True)
+    username: str | None = Field(default=None, repr=False, exclude=True)
 
 
 class EntraVerifier:
@@ -75,6 +76,14 @@ class EntraVerifier:
         # Resolve OBO before opening the MCP response: consent/CA challenges can then be HTTP 401s.
         # The result is cached, but every request still validates the caller's current JWT.
         graph_token = await self.obo.acquire(token, int(claims["exp"]))
+        username = next(
+            (
+                value
+                for value in (claims.get("preferred_username"), claims.get("upn"))
+                if isinstance(value, str) and 0 < len(value) <= 256
+            ),
+            None,
+        )
         return DelegatedAccessToken(
             token=token,
             client_id=client_id,
@@ -84,6 +93,7 @@ class EntraVerifier:
             resource=self.settings.resource_url,
             claims={"iss": self.settings.issuer, "tid": str(self.settings.tenant_id)},
             graph_token=graph_token.value,
+            username=username,
         )
 
     async def aclose(self) -> None:
